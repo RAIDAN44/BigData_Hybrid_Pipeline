@@ -2,10 +2,10 @@
   "audit_scope": "Official individual core requirements",
   "database_mode": "NO DATABASE WRITE",
   "summary": {
-    "PASS": 18,
+    "PASS": 19,
     "FAIL": 0,
     "WARN": 0,
-    "PENDING": 1
+    "PENDING": 0
   },
   "checks": [
     {
@@ -113,8 +113,8 @@
     {
       "requirement": "GITHUB",
       "title": "GitHub remote URL",
-      "status": "PENDING",
-      "detail": "Mandatory delivery item; will be completed after final fixes/commit."
+      "status": "PASS",
+      "detail": "origin\thttps://github.com/RAIDAN44/BigData_Hybrid_Pipeline.git (fetch)\norigin\thttps://github.com/RAIDAN44/BigData_Hybrid_Pipeline.git (push)"
     },
     {
       "requirement": "SAFETY",

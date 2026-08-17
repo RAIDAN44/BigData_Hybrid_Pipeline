@@ -32,5 +32,5 @@
 | README | README.md | PASS |
 | Spark UI screenshots | reports/screenshots | ATTACH |
 | MongoDB Compass screenshots | reports/screenshots | ATTACH |
-| Git repository | initialize locally | PENDING |
-| GitHub URL | publish repository | PENDING |
+| Git repository | Local Git repository initialized on `main` with final project commit | PASS |
+| GitHub URL | https://github.com/RAIDAN44/BigData_Hybrid_Pipeline | PASS |
