@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>VIVA_APP — Hybrid Big Data Pipeline</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 44 44"><path d="M22 4 37 12.5v19L22 40 7 31.5v-19L22 4Z"/><path d="M22 10.5 31.5 16v11L22 32.5 12.5 27V16L22 10.5Z"/><circle cx="22" cy="22" r="3.5"/></svg>
+        </div>
+        <div class="brand-copy"><strong>VIVA_APP</strong><span>Hybrid Big Data Pipeline</span></div>
+      </div>
+
+      <div class="nav-label">واجهة المناقشة</div>
+      <nav id="nav">
+        <button class="nav-item active" data-view="home"><span class="nav-ico" data-icon="home"></span><span>الرئيسية</span></button>
+        <button class="nav-item" data-view="story"><span class="nav-ico" data-icon="route"></span><span>رحلة المشروع</span></button>
+        <button class="nav-item" data-view="results"><span class="nav-ico" data-icon="chart"></span><span>النتائج الرسمية</span></button>
+        <button class="nav-item" data-view="schema"><span class="nav-ico" data-icon="shield"></span><span>الـSchema وتفسير Valid</span></button>
+        <button class="nav-item" data-view="files"><span class="nav-ico" data-icon="code"></span><span>الملفات والأكواد</span></button>
+        <button class="nav-item" data-view="cases"><span class="nav-ico" data-icon="layers"></span><span>حالات البيانات</span></button>
+        <button class="nav-item" data-view="requirements"><span class="nav-ico" data-icon="checklist"></span><span>متطلبات التكليف</span></button>
+        <button class="nav-item" data-view="live"><span class="nav-ico" data-icon="play"></span><span>التجربة العملية</span></button>
+      </nav>
+
+      <div class="sidebar-summary">
+        <div class="summary-row"><span class="status-led"></span><div><b id="healthText">جارٍ فحص السيرفر...</b><small>حالة النظام</small></div></div>
+        <div class="sidebar-mini"><span>Official Run</span><strong>30M</strong></div>
+        <div class="sidebar-mini"><span>Tests</span><strong>53 PASS</strong></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="title-wrap">
+          <button class="icon-btn mobile-only" id="menuBtn" aria-label="فتح القائمة">☰</button>
+          <div><span class="eyebrow">BIG DATA VIVA</span><h1 id="viewTitle">الرئيسية</h1></div>
+        </div>
+        <div class="top-actions">
+          <span class="live-pill"><i></i> Official Evidence Read-only</span>
+          <button class="btn subtle" data-jump="results">النتائج</button>
+          <button class="btn primary" data-jump="live">تشغيل Demo</button>
+        </div>
+      </header>
+
+      <!-- HOME -->
+      <section class="view active" id="view-home">
+        <article class="hero-pro">
+          <div class="hero-copy">
+            <div class="hero-kicker"><span></span> مشروع معالجة بيانات ضخم هجين</div>
+            <h2>خط معالجة البيانات الضخمة الهجين</h2>
+            <p>نظام واحد يحدد مسار المعالجة آليًا حسب حجم الملف: <b>Python Batch</b> للملفات الصغيرة، <b>Apache PySpark</b> للملفات الكبيرة، ثم حفظ Raw-first وتطبيق قواعد الجودة وتوثيق المخرجات في <b>MongoDB</b>.</p>
+            <div class="hero-chips">
+              <span><strong>≤ 200MB</strong> Python Batch</span>
+              <span><strong>&gt; 200MB</strong> PySpark</span>
+              <span><strong>Raw-first</strong> حفظ قبل التنظيف</span>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <svg viewBox="0 0 420 260">
+              <defs><linearGradient id="g1" x1="0" x2="1"><stop stop-color="#34d6ce"/><stop offset="1" stop-color="#4b8ff5"/></linearGradient></defs>
+              <path d="M55 130 C120 38, 210 228, 365 115" fill="none" stroke="url(#g1)" stroke-width="9" stroke-linecap="round" opacity=".82"/>
+              <path d="M55 152 C135 62, 220 250, 365 138" fill="none" stroke="#39c5ff" stroke-width="2.5" stroke-dasharray="8 10" opacity=".62"/>
+              <g transform="translate(28 84)"><ellipse cx="42" cy="20" rx="38" ry="16" fill="#0b4a66" stroke="#4ce1d7"/><path d="M4 20v65c0 9 17 16 38 16s38-7 38-16V20" fill="#0a314d" stroke="#4ce1d7"/><ellipse cx="42" cy="85" rx="38" ry="16" fill="#0a314d" stroke="#4ce1d7"/><path d="M4 46c0 9 17 16 38 16s38-7 38-16M4 67c0 9 17 16 38 16s38-7 38-16" fill="none" stroke="#2b91b0"/></g>
+              <g transform="translate(307 68)"><rect x="0" y="0" width="82" height="82" rx="22" fill="#0a3554" stroke="#56d8d1"/><circle cx="41" cy="41" r="20" fill="#0f5970"/><text x="41" y="48" text-anchor="middle" fill="#dffffc" font-size="22" font-weight="800">Σ</text></g>
+              <circle cx="187" cy="67" r="5" fill="#5be8e0"/><circle cx="223" cy="196" r="4" fill="#68adff"/><circle cx="285" cy="101" r="5" fill="#5be8e0"/>
+            </svg>
+          </div>
+        </article>
+
+        <article class="pipeline-strip card-flat">
+          <div class="pipe-step"><span class="pipe-icon" data-icon="file"></span><b>CSV</b><small>ملف الإدخال</small></div><i>←</i>
+          <div class="pipe-step"><span class="pipe-icon" data-icon="route"></span><b>Router</b><small>قرار الحجم</small></div><i>←</i>
+          <div class="pipe-fork"><span>Python Batch</span><span>PySpark</span></div><i>←</i>
+          <div class="pipe-step"><span class="pipe-icon" data-icon="database"></span><b>orders_raw</b><small>Raw-first</small></div><i>←</i>
+          <div class="pipe-step"><span class="pipe-icon" data-icon="shield"></span><b>Quality Rules</b><small>فحص وتصنيف</small></div><i>←</i>
+          <div class="pipe-fork"><span>Validated</span><span>Quarantine</span></div><i>←</i>
+          <div class="pipe-step"><span class="pipe-icon" data-icon="chart"></span><b>Reports</b><small>نتائج وأدلة</small></div>
+        </article>
+
+        <div class="metric-showcase">
+          <article class="showcase-card tone-teal"><div class="show-icon" data-icon="database"></div><div><span>العينة الموثقة</span><strong id="homeSmallRaw">100,000</strong><small>Python Batch Evidence</small></div><div class="sparkline" id="smallSparkline"></div></article>
+          <article class="showcase-card tone-blue"><div class="show-icon" data-icon="server"></div><div><span>التشغيل الرسمي</span><strong id="homeLargeRaw">30,000,000</strong><small>Apache PySpark</small></div><div class="sparkline" id="largeSparkline"></div></article>
+          <article class="showcase-card tone-violet"><div class="show-icon" data-icon="check"></div><div><span>الاختبارات الآلية</span><strong id="homeTestCount">53 PASS</strong><small>Automated Verification</small></div><div class="ring-mini"><span>✓</span></div></article>
+          <article class="showcase-card tone-amber"><div class="show-icon" data-icon="gauge"></div><div><span>عتبة التوجيه</span><strong id="homeThreshold">200 MB</strong><small>Automatic Router</small></div><div class="threshold-mini"><b>200</b><small>MB</small></div></article>
+        </div>
+
+        <div class="section-heading"><div><span>CORE ARCHITECTURE</span><h3>ما الذي يميز المشروع؟</h3></div><button class="link-btn" data-jump="story">عرض رحلة المشروع ←</button></div>
+        <div class="feature-showcase">
+          <article class="feature-pro"><span class="ficon teal" data-icon="database"></span><h4>Raw-first</h4><p>يُحفظ كل سجل كما وصل قبل أي تنظيف، مما يمنع ضياع البيانات ويضمن قابلية التتبع.</p></article>
+          <article class="feature-pro"><span class="ficon blue" data-icon="memory"></span><h4>Bounded Memory</h4><p>المعالجة الكبيرة لا تحمل 30M سجل في الذاكرة مرة واحدة؛ بل تستخدم دفعات وقراءات محدودة.</p></article>
+          <article class="feature-pro"><span class="ficon violet" data-icon="refresh"></span><h4>Upsert / Idempotency</h4><p>إعادة التشغيل لا تنشئ Business Records نهائية مكررة؛ Insert أو Update أو Unchanged فقط.</p></article>
+          <article class="feature-pro"><span class="ficon amber" data-icon="lock"></span><h4>Evidence Read-only</h4><p>التقارير والنتائج الرسمية تُقرأ كأدلة محفوظة، بينما التجارب الجديدة تعمل في بيئة معزولة.</p></article>
+        </div>
+
+        <div class="home-lower">
+          <article class="panel surface"><div class="panel-head"><h3>نظرة سريعة على Valid</h3><span class="badge success">Verified</span></div><div class="quick-valid"><div><span>100K</span><strong id="homeSmallValid">70,002</strong><i><b style="width:70.002%"></b></i></div><div><span>30M</span><strong id="homeLargeValid">20,994,411</strong><i><b style="width:69.981%"></b></i></div></div><button class="btn primary" data-jump="results">فتح التحليل الكامل</button></article>
+          <article class="panel safety-panel"><div class="safety-big" data-icon="lock"></div><div><h3>اختبر بأمان الآن، وشغّل فعليًا وقت المناقشة</h3><p>الوضع الافتراضي Rehearsal يحافظ على النتائج الرسمية. وعند تفعيل LIVE يتم تشغيل <code>src.main</code> الحقيقي وتحديث MongoDB الرسمية.</p><button class="btn subtle" data-jump="live">فتح سيناريو التشغيل</button></div></article>
+        </div>
+      </section>
+
+      <!-- STORY -->
+      <section class="view" id="view-story">
+        <div class="page-heading"><div><span class="eyebrow">PROJECT JOURNEY</span><h2>رحلة المشروع</h2><p>من تحليل التكليف إلى تشغيل 30 مليون سجل والتحقق النهائي.</p></div><span class="page-badge"><b>25</b> مرحلة موثقة</span></div>
+        <article class="journey-rail panel dark-panel" id="journeyRail"></article>
+        <div class="journey-focus-grid">
+          <article class="panel"><div class="panel-head"><h3>لماذا اخترنا نهجًا هجينًا؟</h3><span class="badge info">Hybrid</span></div><div class="hybrid-visual"><div class="tech-node python">PY</div><div class="puzzle">+</div><div class="tech-node spark">SP</div></div><div class="benefit-grid"><div><b>مرونة</b><span>المحرك الأنسب حسب الحجم</span></div><div><b>أداء</b><span>تقليل Overhead للملفات الصغيرة</span></div><div><b>قابلية توسع</b><span>PySpark للمسار الكبير</span></div><div><b>موثوقية</b><span>Raw-first + Quality</span></div></div></article>
+          <article class="panel"><div class="panel-head"><h3>منطق القرار</h3><span class="badge teal">200MB</span></div><div class="decision-pro"><div class="decision-q">ما حجم الملف؟</div><div class="decision-branches"><div class="branch-card"><span>≤ 200MB</span><b>Python Batch</b><small>مسار خفيف وسريع</small></div><div class="branch-card purple"><span>&gt; 200MB</span><b>PySpark</b><small>مسار موزع للبيانات الكبيرة</small></div></div><div class="decision-end"><span data-icon="database"></span> MongoDB / Raw-first</div></div></article>
+        </div>
+        <div class="section-heading"><div><span>ENGINEERING DETAILS</span><h3>المراحل بالتفصيل</h3></div></div>
+        <div id="journeyDetails" class="journey-grid"></div>
+      </section>
+
+      <!-- RESULTS -->
+      <section class="view" id="view-results">
+        <div class="page-heading"><div><span class="eyebrow">OFFICIAL VERIFIED RESULTS</span><h2>النتائج الرسمية وتحليل Valid</h2><p>الأرقام الموثقة من تقارير المشروع مع تفسير واضح لسبب ظهور Valid.</p></div><span class="source-pill" id="resultsSource">جارٍ تحميل المصدر...</span></div>
+
+        <article class="valid-explanation panel">
+          <div class="valid-copy"><span class="badge teal">BASE VALIDATION CONTRACT</span><h3>لماذا ظهر Valid بهذا العدد؟</h3><p><b>Valid</b> هو السجل الذي دخل بدون أي Error وبدون أي Correction. لذلك، عند استخدام <b>نفس العينة ونفس الـBase Schema ونفس قواعد التحقق الأساسية</b>، يجب أن تكون مجموعة السجلات Valid متطابقة.</p><p class="muted">Corrected وQuarantine قد يختلفان قليلًا بسبب اختلاف تغطية التصحيحات الحتمية الآمنة، وليس لأن تعريف Valid يتغير.</p></div>
+          <div class="logic-flow"><div class="logic-node source">سجل وارد</div><i>←</i><div class="logic-diamond">Errors؟</div><div class="logic-branch"><span class="red">نعم → Quarantine</span><span class="green">لا</span></div><i>←</i><div class="logic-diamond">Corrections؟</div><div class="logic-branch"><span class="amber">نعم → Corrected</span><span class="green">لا → Valid</span></div></div>
+        </article>
+
+        <div class="results-two">
+          <article class="result-pro panel"><div class="result-title"><div><span class="result-label">100K EVIDENCE</span><h3>العينة الموثقة</h3></div><span class="badge success">PASS</span></div><div id="smallMetrics" class="result-kpis"></div><div class="result-visuals"><div id="smallBarChart" class="bar-visual"></div><div id="smallChart" class="chart-box"></div></div><div class="equation" id="smallEquation"></div></article>
+          <article class="result-pro panel"><div class="result-title"><div><span class="result-label">30M OFFICIAL RUN</span><h3>التشغيل الرسمي الكبير</h3></div><span class="badge success">PASS</span></div><div id="largeMetrics" class="result-kpis"></div><div class="result-visuals"><div id="largeBarChart" class="bar-visual"></div><div id="largeChart" class="chart-box"></div></div><div class="equation" id="largeEquation"></div></article>
+        </div>
+
+        <div id="officialKpis" class="official-kpis"></div>
+        <div class="analytics-grid">
+          <article class="panel"><div class="panel-head"><h3>أكثر قواعد التصحيح استخدامًا — 30M</h3><span class="badge warning">Corrections</span></div><div id="correctionChart" class="bars-pro"></div></article>
+          <article class="panel"><div class="panel-head"><h3>أكثر أسباب الحجر — 30M</h3><span class="badge danger">Errors</span></div><div id="errorChart" class="bars-pro"></div></article>
+        </div>
+        <div class="analytics-grid">
+          <article class="panel"><div class="panel-head"><h3>Raw Ingestion Throughput</h3><span class="badge info">Raw vs Raw</span></div><div id="rawPerformanceChart" class="bars-pro"></div><div class="info-note">هذه مقارنة بين مرحلتي Raw ingestion فقط، وليست مقارنة بين Spark Raw وQuality ELT لأنهما Workloads مختلفان.</div></article>
+          <article class="panel evidence-preview"><div class="panel-head"><h3>أدلة التنفيذ المحفوظة</h3><span class="badge teal">Read-only</span></div><div id="evidenceGrid" class="evidence-grid compact"></div></article>
+        </div>
+      </section>
+
+      <!-- SCHEMA -->
+      <section class="view" id="view-schema">
+        <div class="page-heading"><div><span class="eyebrow">SCHEMA & VALIDATION</span><h2>الـSchema وتفسير Valid</h2><p>شرح الحقول الخام، Raw String Schema، والشكل النهائي في MongoDB.</p></div><span class="page-badge"><b>17</b> حقل إدخال خام</span></div>
+        <div class="classify-strip"><div class="classify valid"><span data-icon="check"></span><div><b>Valid</b><small>لا Errors + لا Corrections</small></div></div><div class="classify corrected"><span data-icon="wrench"></span><div><b>Corrected</b><small>تصحيح حتمي آمن مع عدم وجود Errors متبقية</small></div></div><div class="classify quarantine"><span data-icon="alert"></span><div><b>Quarantined</b><small>خطأ غير قابل للإصلاح بثقة أو تعارض</small></div></div></div>
+        <div class="schema-grid">
+          <article class="panel"><div class="panel-head"><h3>الحقول الخام المستلمة</h3><span class="badge info">17 Fields</span></div><div id="schemaFields" class="field-table"></div></article>
+          <article class="panel schema-transform"><div class="panel-head"><h3>Raw → Final Validated</h3><span class="badge teal">Raw-first</span></div><div class="transform-columns"><div><h4>Raw Spark Schema</h4><p>جميع business fields تُقرأ StringType للحفاظ على القيم المتسخة كما وصلت.</p><div id="rawShape" class="schema-list"></div></div><div class="transform-arrow"><span data-icon="settings"></span><b>قواعد التحويل<br>والتحقق</b></div><div><h4>Final MongoDB Shape</h4><p>بعد التصنيف تُطبّق الأنواع النهائية والـValidator على البيانات المعتمدة.</p><div id="finalShape" class="schema-list"></div></div></div></article>
+        </div>
+        <div class="schema-bottom">
+          <article class="panel"><div class="panel-head"><h3>MongoDB 6.9 — فحص حي Read-only</h3><span class="badge success">Current State</span></div><div id="mongoStatus" class="status-panel">جارٍ الفحص...</div></article>
+          <article class="panel"><div class="panel-head"><h3>لماذا Raw بلا Validator حاجب؟</h3><span class="badge info">Raw-first</span></div><div class="raw-reason"><span data-icon="database"></span><p>لأن الهدف من <code>orders_raw</code> هو حفظ ما وصل حرفيًا، حتى القيم غير الصحيحة. فرض Validator صارم هنا قد يرفض السجل قبل أن نحفظ الدليل الخام.</p></div><div class="raw-reason"><span data-icon="shield"></span><p>أما <code>orders_validated</code> فهو الناتج النهائي، ولذلك يكون الـSchema Validator فيه <b>strict/error</b> مع Unique Index على <code>order_id</code>.</p></div></article>
+        </div>
+      </section>
+
+      <!-- FILES -->
+      <section class="view" id="view-files">
+        <div class="page-heading"><div><span class="eyebrow">SOURCE EXPLORER</span><h2>مستكشف الملفات والأكواد</h2><p>استعراض الملفات الحقيقية Read-only مع تركيز أكبر على ملفات Big Data الأساسية.</p></div><span class="page-badge"><b>8</b> Big Data Core</span></div>
+        <div class="core-modules" id="coreModules"></div>
+        <div class="explorer-pro">
+          <aside class="panel file-sidebar"><div class="panel-head"><h3>هيكل المشروع</h3><span class="badge info">Read-only</span></div><input id="fileSearch" class="input" placeholder="ابحث عن ملف..."/><div id="fileTree" class="file-tree"></div></aside>
+          <article class="panel code-panel" id="fileDoc"><div class="empty-code"><span data-icon="code"></span><h3>اختر ملفًا من القائمة</h3><p>ستظهر هنا وظيفة الملف، أهم الدوال، مكانه في الـPipeline، والكود الحقيقي.</p></div></article>
+        </div>
+        <article class="panel module-flow"><div class="panel-head"><h3>كيف يمر التنفيذ بين الملفات؟</h3><span class="badge teal">Execution Flow</span></div><div class="module-flow-row"><div><b>main.py</b><span>نقطة الدخول</span></div><i>←</i><div><b>file_router.py</b><span>قرار المسار</span></div><i>←</i><div class="dual"><span>batch_loader.py</span><span>spark_loader.py</span></div><i>←</i><div><b>quality_rules.py</b><span>التصنيف</span></div><i>←</i><div><b>elt_pipeline.py</b><span>الكتابة النهائية</span></div><i>←</i><div><b>MongoDB</b><span>Validated / Quarantine</span></div></div></article>
+      </section>
+
+      <!-- CASES -->
+      <section class="view" id="view-cases">
+        <div class="page-heading"><div><span class="eyebrow">DATA QUALITY CASES</span><h2>حالات البيانات</h2><p>كل حالة توضح المشكلة، القرار، Rule/Error Code، والمصير النهائي للسجل.</p></div><span class="page-badge"><b id="caseCount">29</b> حالة فعلية</span></div>
+        <article class="duplicate-focus panel"><div class="dup-side dup"><div class="dup-head"><span data-icon="copy"></span><div><b>Source Duplicate</b><small>تكرار Business Key داخل المصدر</small></div></div><ul><li>نحفظ السجلين في Raw.</li><li>لا نخمن أي نسخة صحيحة.</li><li><code>DUPLICATE_ORDER_ID</code> → Quarantine.</li></ul></div><div class="vs">VS</div><div class="dup-side idem"><div class="dup-head"><span data-icon="refresh"></span><div><b>Idempotent Rerun</b><small>إعادة تشغيل نفس Business Record</small></div></div><ul><li>Business Key = <code>order_id</code>.</li><li>same fingerprint → Unchanged.</li><li>changed fingerprint → Update.</li></ul></div></article>
+        <div class="case-toolbar"><div class="search-wrap"><span data-icon="search"></span><input id="caseSearch" class="input" placeholder="ابحث باسم الحالة أو Code..."/></div><select id="caseCategory" class="input"><option value="">كل الفئات</option></select><div id="caseStatusTabs" class="status-tabs"><button class="active" data-status="">الكل</button><button data-status="Corrected">Corrected</button><button data-status="Quarantined">Quarantine</button></div></div>
+        <div id="casesGrid" class="case-grid-pro"></div>
+      </section>
+
+      <!-- REQUIREMENTS -->
+      <section class="view" id="view-requirements">
+        <div class="page-heading"><div><span class="eyebrow">ASSIGNMENT CONTRACT</span><h2>متطلبات التكليف مقابل التنفيذ</h2><p>ربط مباشر بين البنود الرسمية وملفات التنفيذ والأدلة.</p></div><span class="page-badge success"><b>12/12</b> Core PASS</span></div>
+        <div id="requirementsGrid" class="requirements-pro"></div>
+        <div class="section-heading"><div><span>RUNTIME & CODE</span><h3>متطلبات الكود والتشغيل</h3></div></div><div id="runtimeReqs" class="runtime-grid"></div>
+      </section>
+
+      <!-- LIVE -->
+      <section class="view" id="view-live">
+        <div class="page-heading"><div><span class="eyebrow">REHEARSAL / LIVE EXECUTION</span><h2>سيناريو التجربة العملية</h2><p>نفس واجهة التشغيل بوضعين: اختبار آمن الآن، وتشغيل حقيقي يحدّث MongoDB وقت المناقشة.</p></div><span class="live-safe" id="modeBadge"><i></i> REHEARSAL — SAFE</span></div>
+        <article class="mode-switcher panel">
+          <div class="mode-switch-head"><div><span class="eyebrow">EXECUTION MODE</span><h3>اختر طبيعة التشغيل</h3></div><div id="modeDbHint" class="mode-db-hint">جارٍ قراءة إعدادات MongoDB...</div></div>
+          <div class="mode-options">
+            <button class="mode-option active" id="modeRehearsal" data-mode="rehearsal"><span data-icon="shield"></span><div><b>Rehearsal — اختبار آمن</b><small>الافتراضي الآن. لا يغيّر Collections الرسمية.</small></div><em>SAFE</em></button>
+            <button class="mode-option live" id="modeLive" data-mode="live"><span data-icon="play"></span><div><b>LIVE — تشغيل فعلي</b><small>يشغّل src.main الحقيقي ويكتب إلى MongoDB الرسمية.</small></div><em>WRITE</em></button>
+          </div>
+          <div id="modeWarning" class="mode-warning safe"><b>الوضع الحالي: Rehearsal</b><span>يمكنك تجربة الواجهة والمسار الآن بدون تغيير orders_raw / orders_validated / orders_quarantine الرسمية.</span></div>
+        </article>
+        <article class="scenario-stepper panel" id="scenarioStepper"></article>
+        <div class="live-grid">
+          <article class="panel upload-panel"><div class="panel-head"><h3>1) اختيار ملف CSV</h3><span class="badge teal">Router Auto</span></div><label class="dropzone" for="csvFile"><span data-icon="upload"></span><b>اختر ملفًا من جهازك</b><small>CSV فقط — سيتم رفع نسخة مؤقتة داخل VIVA_APP/runtime</small><input type="file" id="csvFile" accept=".csv,text/csv"/></label><button class="btn primary wide" id="uploadBtn">رفع وفحص الملف</button><div id="preflightBox" class="preflight empty-state">لم يتم اختيار ملف بعد.</div></article>
+          <article class="panel safety-contract" id="safetyContract"><div class="panel-head"><h3>حماية النتائج الرسمية</h3><span class="badge success" id="safetyBadge">REHEARSAL</span></div><div class="safety-hero"><span data-icon="lock"></span><div><b id="safetyTitle">النتائج الرسمية في أمان</b><p id="safetyText">الاختبار الحالي يستخدم أهدافًا معزولة ولا يغير Collections الرسمية.</p></div></div><ul class="check-list" id="safetyList"><li>Router الحقيقي يقرر من الحجم.</li><li>نفس quality_rules.py المستخدمة في المشروع.</li><li>النتائج الرسمية التاريخية تبقى ثابتة في صفحة النتائج.</li><li>يمكن حذف بيئة Rehearsal كاملة بعد الاختبار.</li></ul><button class="btn danger-outline wide" id="cleanupBtn">حذف بيئة Rehearsal فقط</button><div id="cleanupMsg" class="muted small"></div></article>
+        </div>
+        <article class="panel stage-panel"><div class="panel-head"><h3>2) مراحل التنفيذ</h3><button class="btn primary" id="runDemoBtn" disabled>تشغيل التجربة</button></div><div id="stageTracker" class="stage-tracker-pro"></div></article>
+        <article class="panel live-result-panel"><div class="panel-head"><h3>3) نتائج التشغيل الحي</h3><span class="badge info" id="liveResultBadge">REHEARSAL RUN — Official unchanged</span></div><div id="liveResults" class="empty-state">ستظهر النتائج والرسوم بعد تشغيل الملف.</div></article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="evidenceModal" class="modal"><button class="modal-close" id="closeEvidence">×</button><img id="evidenceImage" alt="Evidence"/><p id="evidenceCaption"></p></dialog>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -1,3 +1,23 @@
+"""
+upsert_update_proof.py
+
+المهمة:
+إثبات أن عملية Upsert تعمل بشكل صحيح.
+
+الفكرة:
+1- نأخذ سجلًا حقيقيًا من orders_validated.
+2- ننشئ Collection مؤقتة للاختبار.
+3- أول Upsert يجب أن يعمل INSERT.
+4- نغير بيانات نفس السجل مع إبقاء order_id نفسه.
+5- ثاني Upsert يجب أن يعمل UPDATE وليس INSERT جديد.
+6- نتأكد أن عدد السجلات بقي 1 ولا يوجد Duplicate.
+7- نحفظ تقرير إثبات.
+8- نحذف Collection المؤقتة.
+
+مهم:
+الاختبار لا يعدل بيانات Production الأصلية.
+"""
+
 import copy
 import json
 from datetime import datetime, timezone
@@ -16,26 +36,36 @@ from src.mongo_setup import (
 )
 
 
+# Collection مؤقتة خاصة باختبار الـ Upsert.
 TEST_COLLECTION = "_upsert_update_proof_temp"
 
 
 def now_utc():
+    """إرجاع الوقت الحالي بتوقيت UTC."""
+
     return datetime.now(
         timezone.utc
     )
 
 
 def main():
+
     client = None
 
     try:
+        # ====================================================
+        # الاتصال بـ MongoDB.
+        # ====================================================
+
         client = create_mongo_client()
         db = get_database(client)
 
+        # Collection التي تحتوي البيانات المعالجة الحقيقية.
         validated = db[
             VALIDATED_COLLECTION
         ]
 
+        # Collection مؤقتة سنجري فيها الاختبار.
         test_collection = db[
             TEST_COLLECTION
         ]
@@ -44,10 +74,12 @@ def main():
         print("PHASE 13B - UPSERT UPDATE PROOF")
         print("=" * 88)
 
+
         # ====================================================
-        # 1. GET ONE REAL VALIDATED RECORD
+        # 1. أخذ سجل حقيقي من orders_validated
         # ====================================================
 
+        # نبحث عن سجل يحتوي على order_id صالح.
         source = validated.find_one(
             {
                 "order_id": {
@@ -57,11 +89,13 @@ def main():
             }
         )
 
+        # إذا لم نجد سجلًا مناسبًا نوقف الاختبار.
         if not source:
             raise RuntimeError(
                 "orders_validated has no usable record."
             )
 
+        # حفظ order_id لأنه Business Key المستخدم في الاختبار.
         original_order_id = source[
             "order_id"
         ]
@@ -71,16 +105,21 @@ def main():
             f"{original_order_id}"
         )
 
+
         # ====================================================
-        # 2. RESET ISOLATED TEST COLLECTION
+        # 2. تجهيز Collection مؤقتة ومعزولة للاختبار
         # ====================================================
 
+        # حذف أي نسخة قديمة من Collection الاختبار.
         test_collection.drop()
 
+        # إعادة الحصول عليها بعد الحذف.
         test_collection = db[
             TEST_COLLECTION
         ]
 
+        # إنشاء Unique Index على order_id.
+        # يمنع وجود سجلين بنفس order_id.
         test_collection.create_index(
             [
                 (
@@ -101,20 +140,23 @@ def main():
             "Unique order_id index    : PASS"
         )
 
+
         # ====================================================
-        # 3. INSERT BASELINE COPY
+        # 3. FIRST UPSERT
         # ====================================================
 
+        # نسخ السجل الحقيقي حتى لا نعدل السجل الأصلي.
         baseline = copy.deepcopy(
             source
         )
 
+        # إزالة MongoDB _id حتى يتم إنشاء ID جديد في Collection المؤقتة.
         baseline.pop(
             "_id",
             None,
         )
 
-        # Test-only metadata.
+        # Metadata خاصة بالاختبار فقط.
         baseline[
             "_proof_test"
         ] = {
@@ -123,6 +165,12 @@ def main():
             "timestamp": now_utc(),
         }
 
+        # أول Upsert:
+        #
+        # بما أن Collection المؤقتة فارغة،
+        # لن يجد order_id.
+        #
+        # لذلك upsert=True يؤدي إلى INSERT.
         first_result = (
             test_collection.replace_one(
                 {
@@ -135,6 +183,7 @@ def main():
             )
         )
 
+        # عدد السجلات بعد أول Upsert يجب أن يكون 1.
         count_after_first = (
             test_collection.count_documents(
                 {}
@@ -160,21 +209,27 @@ def main():
             f"{count_after_first}"
         )
 
+
         # ====================================================
-        # 4. CHANGE SAME BUSINESS RECORD
+        # 4. تغيير بيانات نفس السجل
         # ====================================================
 
+        # إنشاء نسخة من السجل الذي أدخلناه.
         changed = copy.deepcopy(
             baseline
         )
 
-        # Controlled change only inside temporary copy.
+        # أخذ اسم العميل الأصلي.
         original_customer_name = (
             changed.get(
                 "customer_name"
             )
         )
 
+        # تغيير اسم العميل فقط لأغراض الاختبار.
+        #
+        # مهم:
+        # order_id لا يتغير.
         changed[
             "customer_name"
         ] = (
@@ -182,6 +237,7 @@ def main():
             f"[UPSERT-PROOF]"
         )
 
+        # تحديث Metadata الخاصة بالاختبار.
         changed[
             "_proof_test"
         ] = {
@@ -193,6 +249,15 @@ def main():
             "timestamp": now_utc(),
         }
 
+
+        # ====================================================
+        # 5. SECOND UPSERT
+        # ====================================================
+
+        # الآن نفس order_id موجود بالفعل.
+        #
+        # لذلك يجب أن يحدث MongoDB السجل الموجود
+        # بدل إنشاء سجل جديد.
         second_result = (
             test_collection.replace_one(
                 {
@@ -205,12 +270,14 @@ def main():
             )
         )
 
+        # العدد يجب أن يظل 1.
         count_after_second = (
             test_collection.count_documents(
                 {}
             )
         )
 
+        # قراءة السجل بعد التحديث للتأكد من النتيجة.
         final_document = (
             test_collection.find_one(
                 {
@@ -246,35 +313,43 @@ def main():
             f"{count_after_second}"
         )
 
+
         # ====================================================
-        # 5. ASSERTIONS
+        # 6. التحقق من نجاح الاختبار
         # ====================================================
 
+        # أول Upsert يجب أن يعمل INSERT.
         first_inserted = (
             (1 if first_result.upserted_id is not None else 0)
             == 1
         )
 
+        # ثاني Upsert يجب ألا يعمل INSERT جديد.
         second_not_inserted = (
             (1 if second_result.upserted_id is not None else 0)
             == 0
         )
 
+        # يجب أن يجد السجل الموجود.
         second_matched = (
             second_result.matched_count
             == 1
         )
 
+        # يجب أن يحدث السجل.
         second_updated = (
             second_result.modified_count
             == 1
         )
 
+        # العدد يجب أن يبقى 1 قبل وبعد التحديث.
+        # وهذا يثبت عدم إنشاء Duplicate.
         count_stable = (
             count_after_first == 1
             and count_after_second == 1
         )
 
+        # التأكد أن Business Key لم يتغير.
         same_business_key = (
             final_document[
                 "order_id"
@@ -282,6 +357,7 @@ def main():
             == original_order_id
         )
 
+        # التأكد أن البيانات الجديدة تم حفظها فعلًا.
         payload_changed = (
             final_document.get(
                 "customer_name"
@@ -291,6 +367,7 @@ def main():
             ]
         )
 
+        # جميع الشروط السابقة يجب أن تنجح.
         passed = all(
             [
                 first_inserted,
@@ -308,10 +385,12 @@ def main():
                 "Upsert update proof failed."
             )
 
+
         # ====================================================
-        # 6. SAVE EVIDENCE
+        # 7. حفظ Evidence / Report
         # ====================================================
 
+        # إنشاء تقرير يحتوي نتائج الاختبار.
         report = {
             "phase": (
                 "phase_13b_upsert_update_proof"
@@ -329,6 +408,7 @@ def main():
                 TEST_COLLECTION
             ),
 
+            # Business Key المستخدم لتحديد السجل.
             "business_key": (
                 "order_id"
             ),
@@ -337,6 +417,7 @@ def main():
                 original_order_id
             ),
 
+            # نتيجة أول Upsert.
             "first_upsert": {
                 "upserted_count": (
                     (1 if first_result.upserted_id is not None else 0)
@@ -355,6 +436,7 @@ def main():
                 ),
             },
 
+            # نتيجة ثاني Upsert بعد تغيير البيانات.
             "second_upsert_changed_payload": {
                 "upserted_count": (
                     (1 if second_result.upserted_id is not None else 0)
@@ -373,6 +455,7 @@ def main():
                 ),
             },
 
+            # خلاصة الإثبات.
             "proof": {
                 "same_order_id": (
                     same_business_key
@@ -391,9 +474,12 @@ def main():
                 "result": "PASS",
             },
 
+            # تأكيد أن البيانات الأصلية لم يتم تعديلها.
             "production_data_modified": False,
         }
 
+
+        # مكان حفظ تقرير الإثبات.
         report_path = (
             REPORTS_DIR
             / "upsert_update_proof.json"
@@ -403,6 +489,7 @@ def main():
             "w",
             encoding="utf-8",
         ) as file:
+
             json.dump(
                 report,
                 file,
@@ -411,12 +498,15 @@ def main():
                 default=str,
             )
 
+
         # ====================================================
-        # 7. CLEAN TEMPORARY COLLECTION
+        # 8. تنظيف بيانات الاختبار
         # ====================================================
 
+        # حذف Collection المؤقتة بعد انتهاء الاختبار.
         test_collection.drop()
 
+        # التأكد أنها حُذفت فعلًا.
         temp_exists_after_cleanup = (
             TEST_COLLECTION
             in db.list_collection_names()
@@ -427,6 +517,7 @@ def main():
                 "Temporary proof collection "
                 "was not removed."
             )
+
 
         # ====================================================
         # FINAL SUMMARY
@@ -509,23 +600,33 @@ def main():
         print(report_path)
 
         print("\n" + "=" * 88)
+
         print(
             "PHASE 13B UPSERT UPDATE PROOF: PASS"
         )
+
         print("=" * 88)
+
 
     finally:
 
+        # ====================================================
+        # تنظيف احتياطي وإغلاق الاتصال
+        # ====================================================
+
         if client is not None:
 
-            # Defensive cleanup if an exception occurs.
+            # إذا حدث Exception أثناء الاختبار،
+            # نحاول أيضًا حذف Collection المؤقتة.
             try:
                 db[
                     TEST_COLLECTION
                 ].drop()
+
             except Exception:
                 pass
 
+            # إغلاق اتصال MongoDB.
             client.close()
 
 

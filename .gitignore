@@ -26,3 +26,10 @@ tests/*_before_*
 spark-warehouse/
 metastore_db/
 derby.log
+VIVA_APP/runtime/
+VIVA_APP/**/__pycache__/
+*.pyc
+.env
+data/samples/orders_demo_*.csv
+VIVA_APP_REHEARSAL_LIVE.zip
+reports/spark_loader_test.json

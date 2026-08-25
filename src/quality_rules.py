@@ -1,3 +1,24 @@
+"""
+quality_rules.py
+
+المهمة:
+هذا الملف يحتوي قواعد جودة وتنظيف البيانات في المشروع.
+
+الفكرة الأساسية:
+1. يستقبل سجل Raw.
+2. ينظف القيم التي يمكن تصحيحها بشكل مؤكد Deterministic.
+3. يسجل كل تعديل في corrections كـ Audit Trail.
+4. يسجل الأخطاء التي لا يمكن إصلاحها بأمان في errors.
+5. يصنف السجل في النهاية إلى:
+   - valid       : لا أخطاء ولا تصحيحات.
+   - corrected   : تم تصحيحه ولا توجد أخطاء متبقية.
+   - quarantined : توجد أخطاء لا يمكن إصلاحها بأمان.
+
+مهم:
+النظام لا يخمن القيم المفقودة أو الخاطئة.
+التصحيح يتم فقط عندما توجد قاعدة واضحة أو اشتقاق رياضي موثوق.
+"""
+
 import copy
 import json
 import re
@@ -7,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 
 # ============================================================
 # QUALITY STATES
+# الحالات النهائية الممكنة للسجل
 # ============================================================
 
 QUALITY_VALID = "valid"
@@ -16,6 +38,7 @@ QUALITY_QUARANTINED = "quarantined"
 
 # ============================================================
 # OFFICIAL ASSIGNMENT QUARANTINE CODES
+# أكواد الأخطاء الأساسية التي تؤدي إلى عزل السجل
 # ============================================================
 
 ERR_ID_ORDER_MISSING = "MISSING_ORDER_ID"
@@ -29,7 +52,7 @@ ERR_ID_ORDER_DUPLICATE = "DUPLICATE_ORDER_ID"
 ERR_ERRORS_CONFLICTING_MULTIPLE = "MULTIPLE_CONFLICTING_ERRORS"
 
 
-# Extra explicit codes for real dataset cases.
+# أكواد إضافية ظهرت الحاجة لها من حالات البيانات الحقيقية.
 ERR_EMAIL_INVALID = "EMAIL_INVALID_UNRECOVERABLE"
 ERR_PHONE_INVALID = "PHONE_INVALID_UNRECOVERABLE"
 ERR_CURRENCY_UNKNOWN = "CURRENCY_UNKNOWN"
@@ -41,6 +64,7 @@ ERR_TOTAL_UNKNOWN = "TOTAL_UNKNOWN_UNRECOVERABLE"
 
 # ============================================================
 # RULE CODES
+# أكواد توضح نوع التصحيح الذي تم على البيانات
 # ============================================================
 
 RULE_WHITESPACE = "WHITESPACE_TRIMMED"
@@ -65,20 +89,26 @@ RULE_ORDER_TOTAL_RECALCULATED = "ORDER_TOTAL_RECALCULATED"
 
 # ============================================================
 # CONSTANTS
+# ثوابت وقواميس تستخدم أثناء التنظيف
 # ============================================================
 
+# اكتشاف وجود أرقام عربية/فارسية داخل النص.
 ARABIC_DIGITS_RE = re.compile(r"[٠-٩۰-۹]")
 
+# تحويل الأرقام العربية والفارسية إلى 0-9.
 ARABIC_DIGITS_MAP = str.maketrans(
     "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹",
     "01234567890123456789"
 )
 
+# قيم نصية ظهرت ضمن الحالات التي يدعمها المشروع.
+# لا نحول أي كلمة رقمية عشوائيًا حتى لا نخمن.
 KNOWN_PRICE_WORDS = {
     "ألفان": Decimal("2000"),
     "خمسة آلاف": Decimal("5000"),
 }
 
+# الحالات الصحيحة المعروفة للطلب.
 VALID_ORDER_STATUSES = {
     "مؤكد",
     "قيد الانتظار",
@@ -88,30 +118,38 @@ VALID_ORDER_STATUSES = {
     "ملغي",
 }
 
-# Explicit deterministic synonym dictionary.
+# توحيد مرادفات حالة الدفع إلى قيمة Canonical واحدة.
 PAYMENT_STATUS_MAP = {
     "تم الدفع": "تم الدفع",
     "بانتظار الدفع": "بانتظار الدفع",
     "مدفوع": "تم الدفع",
 }
 
+# تستخدم لإصلاح @@ أو .. المتكررة في البريد.
 REPEATED_AT = re.compile(r"@{2,}")
 REPEATED_DOT = re.compile(r"\.{2,}")
 
 
 # ============================================================
 # BASIC HELPERS
+# دوال مساعدة عامة
 # ============================================================
 
 def is_blank(value):
+    """فحص هل القيمة مفقودة أو فارغة."""
     return value is None or str(value).strip() == ""
 
 
 def normalize_digits(value):
+    """تحويل الأرقام العربية/الفارسية إلى أرقام إنجليزية."""
     return str(value).translate(ARABIC_DIGITS_MAP)
 
 
 def to_number(value):
+    """
+    تحويل Decimal إلى int إذا كان عددًا صحيحًا،
+    وإلا إلى float.
+    """
     if value is None:
         return None
 
@@ -122,6 +160,7 @@ def to_number(value):
 
 
 def positive_integer(value):
+    """التحقق أن القيمة عدد صحيح موجب."""
     return (
         value is not None
         and value > 0
@@ -131,10 +170,10 @@ def positive_integer(value):
 
 def parse_decimal(value):
     """
-    Deterministic numeric parser.
+    تحويل القيمة النصية إلى Decimal بطريقة حتمية.
 
-    Supports only transformations justified by the assignment
-    and confirmed in the real dataset.
+    يدعم فقط التحويلات المعروفة والمبررة في المشروع،
+    مثل الأرقام العربية والفواصل والعملات والقيم النصية المعروفة.
     """
 
     if is_blank(value):
@@ -142,16 +181,19 @@ def parse_decimal(value):
 
     text = str(value).strip()
 
+    # قيم الكلمات الرقمية المعروفة.
     if text in KNOWN_PRICE_WORDS:
         return KNOWN_PRICE_WORDS[text]
 
+    # ٥٠٠٠ → 5000
     text = normalize_digits(text)
 
-    # Arabic separators.
+    # توحيد الفواصل العربية.
     text = text.replace("٫", ".")
     text = text.replace("٬", ",")
 
-    # Remove explicit known currency suffixes only.
+    # إزالة لاحقة العملة المعروفة فقط.
+    # مثال: 5000 ريال → 5000
     text = re.sub(
         r"\s*(YER|ريال يمني|ريال)\s*$",
         "",
@@ -159,18 +201,21 @@ def parse_decimal(value):
         flags=re.IGNORECASE,
     )
 
-    # Thousands separators.
+    # إزالة Thousands Separator.
+    # مثال: 5,000 → 5000
     text = text.strip().replace(",", "")
 
     try:
         return Decimal(text)
 
     except InvalidOperation:
+        # إذا لم نستطع فهم القيمة بأمان لا نخمن.
         return None
 
 
 # ============================================================
 # AUDIT HELPERS
+# تسجيل التصحيحات والأخطاء
 # ============================================================
 
 def add_correction(
@@ -181,6 +226,11 @@ def add_correction(
     rule_code,
     details=None,
 ):
+    """
+    تسجيل ماذا تم تصحيحه:
+    الحقل + القيمة القديمة + الجديدة + القاعدة المستخدمة.
+    """
+
     correction = {
         "field": field,
         "original_value": original,
@@ -201,6 +251,10 @@ def add_error(
     value,
     message,
 ):
+    """
+    تسجيل الخطأ الذي لم نستطع إصلاحه بأمان.
+    """
+
     errors.append(
         {
             "code": code,
@@ -213,6 +267,7 @@ def add_error(
 
 # ============================================================
 # NUMERIC FORMAT AUDIT
+# معرفة أي قواعد رقمية تم استخدامها
 # ============================================================
 
 def numeric_rule_codes(original):
@@ -249,6 +304,10 @@ def normalize_numeric_field(
     field,
     corrections,
 ):
+    """
+    تنظيف حقل رقمي وتسجيل قواعد التصحيح التي استخدمت عليه.
+    """
+
     original = cleaned.get(field)
 
     parsed = parse_decimal(original)
@@ -260,6 +319,7 @@ def normalize_numeric_field(
 
     cleaned[field] = corrected
 
+    # تسجيل نوع التحويل الذي حدث.
     for rule_code in numeric_rule_codes(original):
 
         add_correction(
@@ -275,6 +335,7 @@ def normalize_numeric_field(
 
 # ============================================================
 # WHITESPACE
+# إزالة المسافات الزائدة
 # ============================================================
 
 def normalize_top_level_whitespace(
@@ -283,6 +344,7 @@ def normalize_top_level_whitespace(
 ):
     for field, value in list(cleaned.items()):
 
+        # نعالج الحقول النصية فقط.
         if not isinstance(value, str):
             continue
 
@@ -303,6 +365,7 @@ def normalize_top_level_whitespace(
 
 # ============================================================
 # DATE
+# توحيد التاريخ إلى صيغة واحدة
 # ============================================================
 
 def normalize_date(
@@ -312,6 +375,7 @@ def normalize_date(
 ):
     original = cleaned.get("order_date")
 
+    # التاريخ مطلوب.
     if is_blank(original):
 
         add_error(
@@ -324,11 +388,12 @@ def normalize_date(
 
         return
 
+    # تحويل الأرقام العربية داخل التاريخ أولًا.
     text = normalize_digits(
         str(original).strip()
     )
 
-    # Already valid ISO.
+    # محاولة قراءة ISO مباشرة.
     try:
         parsed = datetime.fromisoformat(
             text.replace("Z", "+00:00")
@@ -345,6 +410,7 @@ def normalize_date(
     except ValueError:
         pass
 
+    # صيغ التاريخ المعروفة التي يسمح المشروع بتحويلها.
     known_formats = [
         "%d-%m-%Y %H:%M:%S",
         "%d/%m/%Y %H:%M:%S",
@@ -362,6 +428,7 @@ def normalize_date(
                 fmt
             )
 
+            # جميع التواريخ تصبح بنفس الشكل النهائي.
             canonical = parsed.strftime(
                 "%Y-%m-%dT%H:%M:%S"
             )
@@ -381,6 +448,7 @@ def normalize_date(
         except ValueError:
             continue
 
+    # تاريخ مستحيل أو صيغة غير معروفة → Error.
     add_error(
         errors,
         ERR_DATE_IMPOSSIBLE_INVALID,
@@ -392,9 +460,12 @@ def normalize_date(
 
 # ============================================================
 # EMAIL
+# فحص وإصلاح البريد الإلكتروني
 # ============================================================
 
 def email_is_valid(value):
+    """فحص بسيط لبنية البريد الإلكتروني."""
+
     if is_blank(value):
         return False
 
@@ -457,10 +528,12 @@ def normalize_email(
 
     text = str(original).strip()
 
+    # إذا كان صحيحًا نتركه كما هو.
     if email_is_valid(text):
         cleaned["customer_email"] = text
         return
 
+    # إصلاح فقط الرموز المتكررة مثل @@ و ..
     candidate = REPEATED_AT.sub(
         "@",
         text
@@ -471,6 +544,7 @@ def normalize_email(
         candidate
     )
 
+    # نقبل التصحيح فقط إذا أصبح البريد صالحًا فعلًا.
     if (
         candidate != text
         and email_is_valid(candidate)
@@ -490,6 +564,7 @@ def normalize_email(
 
         return
 
+    # إذا لم يوجد إصلاح مؤكد → Quarantine لاحقًا.
     add_error(
         errors,
         ERR_EMAIL_INVALID,
@@ -501,6 +576,7 @@ def normalize_email(
 
 # ============================================================
 # PHONE
+# توحيد رقم الهاتف اليمني
 # ============================================================
 
 def normalize_phone(
@@ -524,6 +600,7 @@ def normalize_phone(
 
         return
 
+    # تحويل الأرقام العربية ثم إزالة الرموز الشكلية.
     text = normalize_digits(
         str(original).strip()
     )
@@ -536,7 +613,7 @@ def normalize_phone(
 
     corrected = None
 
-    # +967 + 9 local digits
+    # +967 + تسعة أرقام محلية.
     if compact.startswith("+967"):
 
         national = compact[4:]
@@ -547,7 +624,7 @@ def normalize_phone(
         ):
             corrected = national
 
-    # Already canonical local format.
+    # أو الرقم موجود أصلًا بالشكل المحلي الصحيح.
     elif (
         compact.isdigit()
         and len(compact) == 9
@@ -570,6 +647,7 @@ def normalize_phone(
         corrected
     )
 
+    # تسجيل التصحيح فقط إذا تغيرت القيمة.
     if str(original).strip() != corrected:
 
         add_correction(
@@ -583,6 +661,7 @@ def normalize_phone(
 
 # ============================================================
 # CURRENCY
+# توحيد العملة إلى YER
 # ============================================================
 
 def normalize_currency(
@@ -606,6 +685,7 @@ def normalize_currency(
 
     text = str(original).strip()
 
+    # yer / Yer / YER → YER
     if text.upper() == "YER":
 
         cleaned["currency"] = "YER"
@@ -622,6 +702,7 @@ def normalize_currency(
 
         return
 
+    # المرادفات العربية المعروفة.
     if text in {
         "ريال يمني",
         "ريال",
@@ -639,6 +720,7 @@ def normalize_currency(
 
         return
 
+    # لا نفترض أن أي عملة مجهولة هي YER.
     add_error(
         errors,
         ERR_CURRENCY_UNKNOWN,
@@ -650,6 +732,7 @@ def normalize_currency(
 
 # ============================================================
 # STATUS
+# التحقق من حالات الطلب والدفع
 # ============================================================
 
 def normalize_statuses(
@@ -659,6 +742,7 @@ def normalize_statuses(
 ):
     status = cleaned.get("status")
 
+    # حالة الطلب يجب أن تكون ضمن الحالات المعروفة.
     if (
         is_blank(status)
         or str(status).strip()
@@ -697,6 +781,7 @@ def normalize_statuses(
                 canonical
             )
 
+            # مثال: مدفوع → تم الدفع
             if canonical != text:
 
                 add_correction(
@@ -710,6 +795,7 @@ def normalize_statuses(
 
 # ============================================================
 # ITEMS JSON
+# قراءة وتنظيف منتجات الطلب
 # ============================================================
 
 def parse_items(
@@ -731,6 +817,7 @@ def parse_items(
         return None
 
     try:
+        # تحويل JSON النصي إلى List Python.
         items = json.loads(value)
 
     except (
@@ -748,6 +835,7 @@ def parse_items(
 
         return None
 
+    # يجب أن يكون items_json عبارة عن List.
     if not isinstance(items, list):
 
         add_error(
@@ -760,6 +848,7 @@ def parse_items(
 
         return None
 
+    # القائمة لا يجوز أن تكون فارغة.
     if len(items) == 0:
 
         add_error(
@@ -772,6 +861,7 @@ def parse_items(
 
         return None
 
+    # كل Item يجب أن يكون Object/Dictionary.
     if any(
         not isinstance(item, dict)
         for item in items
@@ -787,6 +877,7 @@ def parse_items(
 
         return None
 
+    # نرجع نسخة مستقلة من العناصر.
     return [
         dict(item)
         for item in items
@@ -797,6 +888,8 @@ def normalize_item_whitespace(
     items,
     corrections,
 ):
+    """إزالة المسافات الزائدة من الحقول النصية داخل Items."""
+
     for index, item in enumerate(items):
 
         for key, value in list(
@@ -827,6 +920,11 @@ def item_number(
     index,
     corrections,
 ):
+    """
+    تنظيف حقل رقمي داخل Item مثل:
+    qty / unit_price / total
+    """
+
     original = item.get(field)
 
     parsed = parse_decimal(original)
@@ -858,6 +956,13 @@ def order_total_corroborates_items(
     delivery,
     order_total,
 ):
+    """
+    التأكد أن:
+    مجموع Items + Delivery = Order Total
+
+    يستخدم كدليل إضافي عند محاولة إصلاح Negative Quantity.
+    """
+
     if (
         delivery is None
         or delivery < 0
@@ -900,6 +1005,18 @@ def clean_items(
     order_total,
     payment_amount,
 ):
+    """
+    أهم جزء في معالجة Items.
+
+    يقوم بـ:
+    - قراءة items_json.
+    - تنظيف القيم.
+    - فحص qty / unit_price / total.
+    - تنفيذ الاشتقاقات الرياضية الآمنة.
+    - محاولة Residual Recovery.
+    - رفض الحالات المتعارضة التي تحتاج تخمين.
+    """
+
     items = parse_items(
         cleaned,
         errors
@@ -913,7 +1030,7 @@ def clean_items(
         corrections
     )
 
-    # Independent evidence used for negative qty recovery.
+    # دليل مستقل يستخدم عند معالجة Negative Quantity.
     order_corroborated = (
         order_total_corroborates_items(
             items,
@@ -926,6 +1043,7 @@ def clean_items(
 
     # --------------------------------------------------------
     # FIRST PASS
+    # قراءة وفحص المكونات الأساسية لكل Item
     # --------------------------------------------------------
 
     for index, item in enumerate(items):
@@ -951,7 +1069,12 @@ def clean_items(
             corrections,
         )
 
-        # Negative quantity.
+        # ----------------------------------------------------
+        # NEGATIVE QUANTITY
+        # لا نحول السالب إلى موجب مباشرة.
+        # نحاول اشتقاق الكمية من total / price مع دليل إضافي.
+        # ----------------------------------------------------
+
         if (
             qty is not None
             and qty < 0
@@ -971,6 +1094,8 @@ def clean_items(
                     / unit_price
                 )
 
+            # التصحيح يتم فقط إذا كانت النتيجة عددًا صحيحًا موجبًا
+            # وإجمالي الطلب يؤكد صحة مكونات Items.
             if (
                 positive_integer(candidate)
                 and order_corroborated
@@ -998,6 +1123,7 @@ def clean_items(
 
             else:
 
+                # لا يوجد دليل كافٍ → لا نخمن.
                 add_error(
                     errors,
                     ERR_VALUE_NEGATIVE_AMBIGUOUS,
@@ -1006,6 +1132,7 @@ def clean_items(
                     "Negative quantity cannot be resolved safely.",
                 )
 
+        # Quantity مفقودة أو صفر → خطأ.
         if (
             qty is None
             or qty == 0
@@ -1019,6 +1146,7 @@ def clean_items(
                 "Quantity is missing, non-numeric, or zero.",
             )
 
+        # السعر السالب لا يمكن إصلاحه بأمان.
         if (
             unit_price is not None
             and unit_price < 0
@@ -1032,6 +1160,7 @@ def clean_items(
                 "Negative unit price is ambiguous.",
             )
 
+        # Item Total السالب كذلك.
         if (
             item_total is not None
             and item_total < 0
@@ -1045,6 +1174,7 @@ def clean_items(
                 "Negative item total is ambiguous.",
             )
 
+        # حفظ حالة كل Item لاستخدامها في المراحل التالية.
         states.append(
             {
                 "index": index,
@@ -1057,6 +1187,7 @@ def clean_items(
 
     # --------------------------------------------------------
     # DIRECT SAFE DERIVATIONS
+    # اشتقاقات رياضية مباشرة وآمنة
     # --------------------------------------------------------
 
     for state in states:
@@ -1068,7 +1199,8 @@ def clean_items(
         price = state["unit_price"]
         total = state["item_total"]
 
-        # total = qty * price
+        # إذا Total مفقود:
+        # total = qty × unit_price
         if (
             total is None
             and positive_integer(qty)
@@ -1097,6 +1229,7 @@ def clean_items(
                 details="Derived as qty * unit_price.",
             )
 
+        # إذا Unit Price مفقود:
         # price = total / qty
         if (
             state["unit_price"] is None
@@ -1134,8 +1267,11 @@ def clean_items(
 
     # --------------------------------------------------------
     # RESIDUAL RECOVERY
+    # استرجاع قيمة Item من إجمالي الطلب
     # --------------------------------------------------------
 
+    # نستخدم هذه الطريقة فقط عندما يوجد Item واحد
+    # مجهول السعر والإجمالي، حتى لا يصبح الحل تخمينًا.
     targets = [
         state
         for state in states
@@ -1158,6 +1294,11 @@ def clean_items(
             if state is not target
         ]
 
+        # شروط قوية قبل استخدام Residual:
+        # - Order Total معروف.
+        # - Delivery معروف.
+        # - Payment Amount يؤكد Order Total.
+        # - جميع Items الأخرى معروفة.
         if (
             order_total is not None
             and order_total >= 0
@@ -1172,6 +1313,8 @@ def clean_items(
             )
         ):
 
+            # residual =
+            # order_total - delivery - totals of other items
             residual = (
                 order_total
                 - delivery
@@ -1198,10 +1341,12 @@ def clean_items(
                     item.get("unit_price")
                 )
 
+                # إجمالي العنصر = المتبقي.
                 target["item_total"] = (
                     residual
                 )
 
+                # السعر = المتبقي / الكمية.
                 target["unit_price"] = (
                     residual / qty
                 )
@@ -1242,6 +1387,7 @@ def clean_items(
 
     # --------------------------------------------------------
     # FINAL ITEM VALIDATION
+    # الفحص النهائي بعد جميع التصحيحات الآمنة
     # --------------------------------------------------------
 
     for state in states:
@@ -1252,6 +1398,7 @@ def clean_items(
         price = state["unit_price"]
         total = state["item_total"]
 
+        # إذا بقي السعر أو الإجمالي مجهولًا → لا يوجد حل آمن.
         if (
             price is None
             or total is None
@@ -1270,8 +1417,10 @@ def clean_items(
 
             continue
 
-        # If a conflict remains after safe corrections,
-        # do not guess which component is wrong.
+        # العلاقة الأساسية:
+        # qty × unit_price يجب أن تساوي total.
+        #
+        # إذا بقي تعارض، لا نخمن أي قيمة هي الخاطئة.
         if (
             qty is not None
             and qty > 0
@@ -1291,6 +1440,7 @@ def clean_items(
                 ),
             )
 
+    # إعادة Items إلى JSON String بعد التنظيف.
     cleaned["items_json"] = json.dumps(
         items,
         ensure_ascii=False,
@@ -1302,29 +1452,50 @@ def clean_items(
 
 # ============================================================
 # MAIN RECORD CLASSIFIER
+# الدالة الرئيسية التي تطبق جميع قواعد الجودة على سجل واحد
 # ============================================================
 
 def classify_record(
     raw_record,
     duplicate_conflict=False,
 ):
+    """
+    المدخل:
+        Raw Record واحد.
+
+    المخرج:
+        quality_status
+        cleaned_record
+        corrections
+        codes_error
+        details_error
+
+    هذه هي الدالة التي يستدعيها الـ ELT Pipeline لكل سجل.
+    """
+
+    # نعمل نسخة حتى لا نعدل Raw Record الأصلي.
     cleaned = copy.deepcopy(
         raw_record
     )
 
+    # Audit Trail للتصحيحات والأخطاء.
     corrections = []
     errors = []
 
-    # General trim first.
+    # --------------------------------------------------------
+    # 1. GENERAL TRIM
+    # --------------------------------------------------------
+
     normalize_top_level_whitespace(
         cleaned,
         corrections
     )
 
     # --------------------------------------------------------
-    # REQUIRED IDS
+    # 2. REQUIRED IDS
     # --------------------------------------------------------
 
+    # لا يمكن اختراع order_id.
     if is_blank(
         cleaned.get("order_id")
     ):
@@ -1337,6 +1508,7 @@ def classify_record(
             "Order ID is missing and cannot be inferred.",
         )
 
+    # لا يمكن اختراع customer_id.
     if is_blank(
         cleaned.get("customer_id")
     ):
@@ -1349,6 +1521,8 @@ def classify_record(
             "Customer ID is missing and cannot be inferred.",
         )
 
+    # قيمة duplicate_conflict يتم تحديدها خارج هذا الملف
+    # ثم تمريرها إلى المصنف.
     if duplicate_conflict:
 
         add_error(
@@ -1363,7 +1537,7 @@ def classify_record(
         )
 
     # --------------------------------------------------------
-    # TEXT / FORMAT RULES
+    # 3. TEXT / FORMAT RULES
     # --------------------------------------------------------
 
     normalize_date(
@@ -1397,7 +1571,7 @@ def classify_record(
     )
 
     # --------------------------------------------------------
-    # TOP-LEVEL NUMBERS
+    # 4. TOP-LEVEL NUMBERS
     # --------------------------------------------------------
 
     delivery = normalize_numeric_field(
@@ -1419,7 +1593,7 @@ def classify_record(
     )
 
     # --------------------------------------------------------
-    # ITEMS
+    # 5. ITEMS
     # --------------------------------------------------------
 
     states = clean_items(
@@ -1432,7 +1606,9 @@ def classify_record(
     )
 
     # --------------------------------------------------------
-    # ORDER TOTAL
+    # 6. ORDER TOTAL
+    # التحقق من:
+    # Order Total = Sum(Item Totals) + Delivery
     # --------------------------------------------------------
 
     if (
@@ -1441,6 +1617,7 @@ def classify_record(
         and delivery >= 0
     ):
 
+        # هل جميع إجماليات المنتجات معروفة وصحيحة؟
         all_totals_known = all(
             state["item_total"]
             is not None
@@ -1461,6 +1638,7 @@ def classify_record(
                 + delivery
             )
 
+            # إذا Order Total مفقود، يمكن اشتقاقه بأمان.
             if order_total is None:
 
                 original = raw_record.get(
@@ -1487,6 +1665,8 @@ def classify_record(
                     ),
                 )
 
+            # إذا موجود لكنه لا يساوي المجموع الصحيح،
+            # نعيد حسابه من Items + Delivery.
             elif order_total != expected_total:
 
                 original = cleaned.get(
@@ -1513,6 +1693,8 @@ def classify_record(
                     ),
                 )
 
+        # إذا Total مفقود ومكونات الحساب نفسها غير مكتملة،
+        # لا يمكن اشتقاقه بأمان.
         elif order_total is None:
 
             add_error(
@@ -1544,7 +1726,8 @@ def classify_record(
         )
 
     # --------------------------------------------------------
-    # MULTIPLE CONFLICTING ERRORS
+    # 7. MULTIPLE CONFLICTING ERRORS
+    # تجميع أكواد الأخطاء بدون تكرار
     # --------------------------------------------------------
 
     codes_error = []
@@ -1556,6 +1739,8 @@ def classify_record(
         if code not in codes_error:
             codes_error.append(code)
 
+    # إذا وجد أكثر من نوع خطأ جوهري،
+    # نسجل أن السجل يحتوي Multiple Conflicting Errors.
     if (
         len(codes_error) > 1
         and ERR_ERRORS_CONFLICTING_MULTIPLE
@@ -1578,31 +1763,48 @@ def classify_record(
         )
 
     # --------------------------------------------------------
-    # FINAL CLASSIFICATION
+    # 8. FINAL CLASSIFICATION
+    # أهم قرار في الملف
     # --------------------------------------------------------
 
+    # وجود أي Error يعني أن السجل يحتاج Quarantine.
     if errors:
 
         quality_status = (
             QUALITY_QUARANTINED
         )
 
+    # لا Errors لكن حدثت تعديلات آمنة.
     elif corrections:
 
         quality_status = (
             QUALITY_CORRECTED
         )
 
+    # لا Errors ولا Corrections = السجل صحيح من البداية.
     else:
 
         quality_status = (
             QUALITY_VALID
         )
 
+    # --------------------------------------------------------
+    # OUTPUT
+    # إرجاع النتيجة مع Audit Trail كامل
+    # --------------------------------------------------------
+
     return {
         "quality_status": quality_status,
+
+        # النسخة النهائية بعد التنظيف.
         "cleaned_record": cleaned,
+
+        # ماذا تم تصحيحه وكيف؟
         "corrections": corrections,
+
+        # أكواد الأخطاء المختصرة.
         "codes_error": codes_error,
+
+        # تفاصيل الأخطاء.
         "details_error": errors,
     }

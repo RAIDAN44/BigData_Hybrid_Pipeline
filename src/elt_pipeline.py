@@ -1,8 +1,41 @@
+"""
+elt_pipeline.py
+
+المهمة:
+هذا الملف مسؤول عن تطبيق قواعد الجودة والتنظيف فعليًا
+على البيانات الموجودة داخل orders_raw.
+
+المراحل الأساسية:
+1. اختيار Raw Run المطلوب معالجته.
+2. التحقق من Dry Run عند الحاجة.
+3. اكتشاف Duplicate order_id.
+4. إنشاء Indexes في MongoDB.
+5. قراءة البيانات على دفعات محدودة الذاكرة.
+6. تطبيق classify_record() على كل سجل.
+7. توزيع النتائج إلى:
+   - orders_validated للـ Valid و Corrected.
+   - orders_quarantine للـ Quarantined.
+8. استخدام Fingerprint لمعرفة هل السجل:
+   - Inserted
+   - Updated
+   - Unchanged
+9. استخدام Bulk Write لتحسين الكتابة إلى MongoDB.
+10. تنفيذ Final Consistency Checks وحفظ تقرير التنفيذ.
+
+مهم:
+المعالجة هنا تتم في Python سجلًا بعد سجل.
+STATE_LOOKUP_BATCH_SIZE = 2000 لا تعني Parallel Processing،
+بل تحد مقدار البيانات المحملة مؤقتًا في الذاكرة.
+WRITE_BATCH_SIZE = 1000 تعني تجميع عمليات الكتابة إلى MongoDB.
+Progress يطبع كل 10000 سجل فقط.
+"""
+
 import hashlib
 import argparse
 import json
 import time
 import uuid
+
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -19,11 +52,14 @@ from config.settings import (
     REPORTS_DIR,
 )
 
+from src.mongo_setup import ensure_validated_schema
+
 from src.mongo_setup import (
     create_mongo_client,
     get_database,
 )
 
+# الدالة الرئيسية لقواعد الجودة التي شرحناها سابقًا.
 from src.quality_rules import (
     classify_record,
     QUALITY_VALID,
@@ -32,22 +68,31 @@ from src.quality_rules import (
 )
 
 
+# عدد عمليات MongoDB التي نجمعها قبل Bulk Write.
 WRITE_BATCH_SIZE = 1000
 
-# Maximum Raw documents whose existing final-state
-# fingerprints are held in Python memory at one time.
+# عدد Raw Records التي نتعامل معها في دفعة State Lookup واحدة.
+# الهدف Bounded Memory وعدم تحميل ملايين السجلات إلى RAM.
 STATE_LOOKUP_BATCH_SIZE = 2000
 
 
 # ============================================================
 # GENERIC HELPERS
+# دوال مساعدة عامة
 # ============================================================
 
 def utc_now():
+    """إرجاع الوقت الحالي بتوقيت UTC."""
     return datetime.now(timezone.utc)
 
 
 def stable_json(value):
+    """
+    تحويل البيانات إلى JSON ثابت الترتيب.
+
+    نستخدم sort_keys=True حتى تعطي نفس البيانات
+    نفس النص وبالتالي نفس Fingerprint.
+    """
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -58,12 +103,21 @@ def stable_json(value):
 
 
 def fingerprint(value):
+    """
+    إنشاء SHA-256 Fingerprint لمحتوى السجل.
+
+    تستخدم لمعرفة هل السجل تغير عن النسخة السابقة أم لا.
+    """
     return hashlib.sha256(
         stable_json(value).encode("utf-8")
     ).hexdigest()
 
 
 def normalized_order_id(raw):
+    """
+    الحصول على order_id بعد إزالة المسافات.
+    """
+
     value = raw.get("order_id")
 
     if value is None:
@@ -74,18 +128,33 @@ def normalized_order_id(raw):
 
 # ============================================================
 # DUPLICATE DETECTION
+# اكتشاف order_id المتكرر في نفس Raw Run
 # ============================================================
 
 def find_duplicate_order_ids(
     collection,
     run_id,
 ):
+    """
+    البحث عن order_id التي تظهر أكثر من مرة
+    داخل نفس عملية Raw Ingestion.
+
+    MongoDB Aggregation:
+    match run_id
+    -> استخراج order_id
+    -> حذف الفارغ
+    -> group by order_id
+    -> count
+    -> الاحتفاظ بما count > 1
+    """
+
     pipeline = [
         {
             "$match": {
                 "run_id": run_id
             }
         },
+
         {
             "$project": {
                 "order_id": {
@@ -100,6 +169,7 @@ def find_duplicate_order_ids(
                 }
             }
         },
+
         {
             "$match": {
                 "order_id": {
@@ -107,14 +177,17 @@ def find_duplicate_order_ids(
                 }
             }
         },
+
         {
             "$group": {
                 "_id": "$order_id",
+
                 "record_count": {
                     "$sum": 1
                 },
             }
         },
+
         {
             "$match": {
                 "record_count": {
@@ -127,10 +200,13 @@ def find_duplicate_order_ids(
     duplicate_ids = set()
     duplicate_records = 0
 
+    # allowDiskUse يسمح لـMongoDB باستخدام Disk
+    # إذا احتاج أثناء Aggregation الكبيرة.
     for item in collection.aggregate(
         pipeline,
         allowDiskUse=True,
     ):
+
         duplicate_ids.add(
             item["_id"]
         )
@@ -147,12 +223,20 @@ def find_duplicate_order_ids(
 
 # ============================================================
 # LOAD EXISTING FINAL STATE
+# نسخة Legacy لتحميل الحالة النهائية الموجودة
 # ============================================================
 
 def load_existing_state(
     collection,
     key_field,
 ):
+    """
+    تحميل Fingerprints والحالة الحالية لسجلات Collection.
+
+    هذه الدالة موجودة، لكن المسار Production Scale يستخدم
+    الطريقة المحدودة الذاكرة الموجودة لاحقًا.
+    """
+
     state = {}
 
     cursor = collection.find(
@@ -182,6 +266,7 @@ def load_existing_state(
             "fingerprint": document.get(
                 "record_fingerprint"
             ),
+
             "first_processed_at": (
                 document.get(
                     "first_processed_at"
@@ -194,6 +279,7 @@ def load_existing_state(
 
 # ============================================================
 # BOUNDED-MEMORY EXISTING-STATE LOOKUP
+# تحميل الحالة الموجودة على دفعات محدودة الذاكرة
 # ============================================================
 
 def iter_cursor_batches(
@@ -201,9 +287,18 @@ def iter_cursor_batches(
     batch_size,
 ):
     """
-    Yield a bounded number of Raw MongoDB documents.
+    تقسيم MongoDB Cursor إلى مجموعات محدودة الحجم.
 
-    Memory use depends on batch_size, not total dataset size.
+    مثال:
+    batch_size = 2000
+
+    1-2000
+    2001-4000
+    4001-6000
+    ...
+
+    الهدف:
+    Memory Use تعتمد على 2000 وليس على حجم Dataset بالكامل.
     """
 
     batch = []
@@ -220,6 +315,7 @@ def iter_cursor_batches(
 
             batch = []
 
+    # إعادة آخر Batch جزئية.
     if batch:
         yield batch
 
@@ -230,11 +326,10 @@ def load_existing_state_for_keys(
     keys,
 ):
     """
-    Load final-state fingerprints only for the current
-    bounded Raw batch.
+    البحث فقط عن الحالات الموجودة الخاصة بالمفاتيح الحالية.
 
-    This replaces full-collection materialization for the
-    production-scale ELT path.
+    بدل تحميل orders_validated أو orders_quarantine كاملة،
+    نستخدم MongoDB $in على Keys الخاصة بالـRaw Batch الحالية.
     """
 
     unique_keys = {
@@ -277,6 +372,7 @@ def load_existing_state_for_keys(
             "fingerprint": document.get(
                 "record_fingerprint"
             ),
+
             "first_processed_at": (
                 document.get(
                     "first_processed_at"
@@ -289,6 +385,7 @@ def load_existing_state_for_keys(
 
 # ============================================================
 # FINAL DOCUMENT BUILDERS
+# بناء الشكل النهائي للسجلات
 # ============================================================
 
 def build_validated_document(
@@ -298,21 +395,32 @@ def build_validated_document(
     processing_run_id,
     first_processed_at,
 ):
+    """
+    بناء Document النهائي للـ Valid أو Corrected Record.
+
+    يتم أيضًا إنشاء Fingerprint لاستخدامها في Idempotency.
+    """
+
     cleaned = dict(
         result["cleaned_record"]
     )
 
+    # order_id هو المفتاح الفريد في orders_validated.
     order_id = str(
         cleaned["order_id"]
     ).strip()
 
     cleaned["order_id"] = order_id
 
+    # فقط البيانات التي تمثل الحالة المنطقية للسجل
+    # تدخل في حساب Fingerprint.
     stable_state = {
         "cleaned_record": cleaned,
+
         "quality_status": result[
             "quality_status"
         ],
+
         "corrections": result[
             "corrections"
         ],
@@ -324,8 +432,10 @@ def build_validated_document(
 
     now = utc_now()
 
+    # البدء بالبيانات النظيفة نفسها.
     final_document = dict(cleaned)
 
+    # إضافة Quality + Lineage + Audit Metadata.
     final_document.update(
         {
             "quality_status": result[
@@ -340,6 +450,8 @@ def build_validated_document(
                 record_fingerprint
             ),
 
+            # Data Lineage:
+            # من أين جاء السجل؟
             "lineage": {
                 "raw_run_id": raw_run_id,
 
@@ -374,10 +486,12 @@ def build_validated_document(
                 ),
             },
 
+            # آخر عملية Processing وصلت لهذا السجل.
             "last_processing_run_id": (
                 processing_run_id
             ),
 
+            # نحافظ على أول وقت تمت فيه معالجة السجل.
             "first_processed_at": (
                 first_processed_at
                 if first_processed_at
@@ -385,6 +499,7 @@ def build_validated_document(
                 else now
             ),
 
+            # آخر تحديث.
             "last_updated_at": now,
         }
     )
@@ -403,6 +518,13 @@ def build_quarantine_document(
     processing_run_id,
     first_processed_at,
 ):
+    """
+    بناء Document خاص بالسجل Quarantined.
+
+    بما أن order_id قد يكون مفقودًا،
+    لا نعتمد عليه كمفتاح فريد.
+    """
+
     source_row_number = (
         raw_document.get(
             "source_row_number"
@@ -413,6 +535,8 @@ def build_quarantine_document(
         "_id"
     )
 
+    # إذا كان رقم السطر متاحًا نستخدم:
+    # run_id + source_row_number
     if source_row_number is not None:
 
         quarantine_key = (
@@ -420,6 +544,8 @@ def build_quarantine_document(
             f"{source_row_number}"
         )
 
+    # في Spark قد لا يتوفر source_row_number،
+    # لذلك نستخدم MongoDB _id.
     else:
 
         quarantine_key = (
@@ -427,6 +553,7 @@ def build_quarantine_document(
             f"{raw_id}"
         )
 
+    # الحالة التي تدخل في Fingerprint.
     stable_state = {
         "raw_record": raw_document.get(
             "raw_record"
@@ -477,14 +604,17 @@ def build_quarantine_document(
             QUALITY_QUARANTINED
         ),
 
+        # الاحتفاظ بالسجل الخام.
         "raw_record": raw_document.get(
             "raw_record"
         ),
 
+        # نسخة التنظيف التي وصل لها النظام قبل العزل.
         "cleaned_preview": result.get(
             "cleaned_record"
         ),
 
+        # Audit Trail.
         "corrections": result.get(
             "corrections",
             [],
@@ -504,6 +634,7 @@ def build_quarantine_document(
             record_fingerprint
         ),
 
+        # معلومات المصدر.
         "source_run_id": raw_run_id,
 
         "source_file": raw_document.get(
@@ -551,19 +682,30 @@ def build_quarantine_document(
 
 # ============================================================
 # BULK WRITE
+# تنفيذ عمليات MongoDB على دفعات
 # ============================================================
 
 def flush_operations(
     collection,
     operations,
 ):
+    """
+    تنفيذ عمليات الكتابة المتجمعة دفعة واحدة.
+
+    WRITE_BATCH_SIZE = 1000
+
+    هذا Batching للكتابة وليس Parallel Processing.
+    """
+
     if not operations:
+
         return {
             "upserted": 0,
             "modified": 0,
             "matched": 0,
         }
 
+    # ordered=False لا يفرض تنفيذ العمليات بالترتيب الصارم.
     result = collection.bulk_write(
         operations,
         ordered=False,
@@ -573,14 +715,17 @@ def flush_operations(
         "upserted": int(
             result.upserted_count
         ),
+
         "modified": int(
             result.modified_count
         ),
+
         "matched": int(
             result.matched_count
         ),
     }
 
+    # تفريغ القائمة بعد نجاح الكتابة.
     operations.clear()
 
     return summary
@@ -588,11 +733,17 @@ def flush_operations(
 
 # ============================================================
 # DRY-RUN CONTRACT
+# التحقق من تقرير Dry Run قبل الكتابة الفعلية
 # ============================================================
 
 def load_dry_run_contract(
     run_id,
 ):
+    """
+    تحميل classification_dry_run.json
+    والتأكد أنه خاص بنفس Raw Run وأن فحصه ناجح.
+    """
+
     path = (
         REPORTS_DIR
         / "classification_dry_run.json"
@@ -608,9 +759,12 @@ def load_dry_run_contract(
         "r",
         encoding="utf-8",
     ) as file:
+
         report = json.load(file)
 
+    # التقرير يجب أن ينتمي لنفس Raw Run.
     if report.get("run_id") != run_id:
+
         raise RuntimeError(
             "Dry-run report belongs to "
             "a different raw run."
@@ -621,9 +775,11 @@ def load_dry_run_contract(
         {}
     )
 
+    # Dry Run نفسه يجب أن يكون PASS.
     if not consistency.get(
         "raw_equals_classified"
     ):
+
         raise RuntimeError(
             "Dry-run consistency was not PASS."
         )
@@ -632,12 +788,8 @@ def load_dry_run_contract(
 
 
 # ============================================================
-# MAIN ELT WRITE
-# ============================================================
-
-
-# ============================================================
 # CLI
+# Arguments التي يستقبلها ELT Pipeline
 # ============================================================
 
 def parse_args():
@@ -649,6 +801,7 @@ def parse_args():
         )
     )
 
+    # تحديد Raw Run بعينه.
     parser.add_argument(
         "--raw-run-id",
         default=None,
@@ -658,6 +811,8 @@ def parse_args():
         ),
     )
 
+    # في التشغيل الكبير الرسمي يمكن تجاوز
+    # مقارنة Dry Run الخاصة بعينة 100K.
     parser.add_argument(
         "--skip-dry-run-contract",
         action="store_true",
@@ -671,9 +826,16 @@ def parse_args():
     return parser.parse_args()
 
 
+# ============================================================
+# MAIN
+# عملية ELT الرئيسية
+# ============================================================
+
 def main():
+
     args = parse_args()
 
+    # لا يسمح بتجاوز Dry Run بدون تحديد Raw Run صراحة.
     if (
         args.skip_dry_run_contract
         and not args.raw_run_id
@@ -682,12 +844,24 @@ def main():
             "--skip-dry-run-contract requires "
             "an explicit --raw-run-id."
         )
+
     client = None
 
     try:
+
+        # ====================================================
+        # CONNECTIONS
+        # ====================================================
+
         client = create_mongo_client()
+
         db = get_database(client)
 
+
+
+        # Assignment 6.9: enforce schema on final validated data.
+
+        ensure_validated_schema(db)
         raw_collection = db[
             RAW_COLLECTION
         ]
@@ -700,16 +874,20 @@ def main():
             QUARANTINE_COLLECTION
         ]
 
+
         # ====================================================
         # SOURCE RUN
+        # اختيار Raw Run المطلوب معالجته
         # ====================================================
 
         if args.raw_run_id:
 
+            # استخدام Run ID الذي مرره main.py.
             raw_run_id = (
                 args.raw_run_id.strip()
             )
 
+            # التأكد أن هذا Run موجود فعليًا.
             source_probe = (
                 raw_collection.find_one(
                     {
@@ -723,6 +901,7 @@ def main():
             )
 
             if not source_probe:
+
                 raise RuntimeError(
                     "Requested raw_run_id does not exist "
                     f"in orders_raw: {raw_run_id}"
@@ -734,6 +913,8 @@ def main():
 
         else:
 
+            # Legacy behavior:
+            # اختيار آخر Raw Run حسب ingested_at.
             latest = raw_collection.find_one(
                 {},
                 sort=[
@@ -748,6 +929,7 @@ def main():
             )
 
             if not latest:
+
                 raise RuntimeError(
                     "orders_raw is empty."
                 )
@@ -760,6 +942,8 @@ def main():
                 "latest_legacy"
             )
 
+
+        # معرف خاص بعملية Quality Processing نفسها.
         processing_run_id = (
             "quality-"
             + datetime.now(
@@ -771,15 +955,19 @@ def main():
             + uuid.uuid4().hex[:8]
         )
 
+
+        # نعمل فقط على سجلات Raw Run المحددة.
         raw_query = {
             "run_id": raw_run_id
         }
 
+        # عدد Raw Records المطلوب تصنيفها.
         raw_count = (
             raw_collection.count_documents(
                 raw_query
             )
         )
+
 
         print("=" * 92)
         print(
@@ -818,8 +1006,9 @@ def main():
 
         print("=" * 92)
 
+
         # ====================================================
-        # SAFETY GATE: DRY RUN
+        # [1/6] SAFETY GATE: DRY RUN
         # ====================================================
 
         if args.skip_dry_run_contract:
@@ -858,8 +1047,9 @@ def main():
                 "Dry-run contract        : PASS"
             )
 
+
         # ====================================================
-        # DUPLICATES
+        # [2/6] DUPLICATE DETECTION
         # ====================================================
 
         print(
@@ -884,14 +1074,17 @@ def main():
             f"{duplicate_record_count:,}"
         )
 
+
         # ====================================================
-        # INDEXES
+        # [3/6] INDEXES
+        # تحسين البحث + فرض Unique Constraints
         # ====================================================
 
         print(
             "\n[3/6] Creating / verifying indexes..."
         )
 
+        # order_id يجب أن يكون Unique في Validated Collection.
         validated_collection.create_index(
             [
                 (
@@ -903,6 +1096,7 @@ def main():
             name="uq_orders_validated_order_id",
         )
 
+        # Index لتسريع البحث حسب Quality Status.
         validated_collection.create_index(
             [
                 (
@@ -913,6 +1107,7 @@ def main():
             name="ix_validated_quality_status",
         )
 
+        # كل Quarantine Record له مفتاح Unique.
         quarantine_collection.create_index(
             [
                 (
@@ -924,6 +1119,7 @@ def main():
             name="uq_quarantine_key",
         )
 
+        # Index حسب Source Run.
         quarantine_collection.create_index(
             [
                 (
@@ -934,6 +1130,7 @@ def main():
             name="ix_quarantine_source_run",
         )
 
+        # Index على Error Codes لتسهيل التحليل.
         quarantine_collection.create_index(
             [
                 (
@@ -948,8 +1145,9 @@ def main():
             "Indexes                 : PASS"
         )
 
+
         # ====================================================
-        # EXISTING FINAL STATE - BOUNDED LOOKUP
+        # [4/6] EXISTING FINAL STATE - BOUNDED LOOKUP
         # ====================================================
 
         print(
@@ -969,31 +1167,45 @@ def main():
             "State lookup strategy   : MongoDB $in per Raw batch"
         )
 
+
         # ====================================================
-        # PROCESS + WRITE
+        # [5/6] PROCESS + WRITE
+        # تصنيف كل سجل وكتابة النتيجة
         # ====================================================
 
         print(
             "\n[5/6] Classifying and writing..."
         )
 
+        # عدادات التصنيف.
         status_counts = Counter()
 
+        # Insert / Update / Unchanged للـValidated.
         validated_write_counts = Counter()
+
+        # Insert / Update / Unchanged للـQuarantine.
         quarantine_write_counts = Counter()
 
+        # عدد مرات ظهور كل Error Code.
         error_code_counts = Counter()
+
+        # عدد مرات استخدام كل Correction Rule.
         correction_rule_counts = Counter()
 
+        # قوائم Bulk Write.
         validated_operations = []
         quarantine_operations = []
 
+        # نتائج MongoDB الفعلية.
         mongo_actual = Counter()
 
+        # عدد السجلات التي تمت معالجتها.
         scanned = 0
 
         started = time.perf_counter()
 
+
+        # Cursor يقرأ فقط الحقول اللازمة.
         cursor = raw_collection.find(
             raw_query,
             projection={
@@ -1008,17 +1220,22 @@ def main():
             },
         ).batch_size(2000)
 
+
+        # تقسيم القراءة إلى مجموعات 2000.
         for raw_batch in iter_cursor_batches(
             cursor,
             STATE_LOOKUP_BATCH_SIZE,
         ):
-            # -------------------------------------------
-            # PREFETCH EXISTING STATE FOR THIS BATCH ONLY
-            # -------------------------------------------
+
+            # =================================================
+            # PREFETCH EXISTING STATE FOR CURRENT BATCH
+            # =================================================
 
             validated_lookup_keys = []
             quarantine_lookup_keys = []
 
+
+            # تجهيز Keys الخاصة بالدفعة الحالية.
             for batch_document in raw_batch:
 
                 batch_raw = batch_document.get(
@@ -1032,10 +1249,13 @@ def main():
                     )
                 )
 
+                # order_id يستخدم في Validated.
                 if batch_order_id:
+
                     validated_lookup_keys.append(
                         batch_order_id
                     )
+
 
                 batch_source_row = (
                     batch_document.get(
@@ -1043,6 +1263,7 @@ def main():
                     )
                 )
 
+                # تجهيز quarantine_key المتوقع.
                 batch_quarantine_key = (
                     f"{raw_run_id}:"
                     f"{batch_source_row}"
@@ -1056,6 +1277,8 @@ def main():
                     batch_quarantine_key
                 )
 
+
+            # تحميل Existing State الخاصة بهذه الدفعة فقط.
             validated_state = (
                 load_existing_state_for_keys(
                     validated_collection,
@@ -1072,6 +1295,12 @@ def main():
                 )
             )
 
+
+            # =================================================
+            # PROCESS EACH RECORD
+            # المعالجة الفعلية سجلًا بعد سجل
+            # =================================================
+
             for raw_document in raw_batch:
 
                 scanned += 1
@@ -1087,10 +1316,19 @@ def main():
                     )
                 )
 
+
+                # هل order_id مكرر في نفس Raw Run؟
                 duplicate_conflict = (
                     order_id
                     in duplicate_ids
                 )
+
+
+                # =================================================
+                # QUALITY RULES
+                # أهم سطر:
+                # تطبيق quality_rules.py على السجل الحالي.
+                # =================================================
 
                 result = classify_record(
                     raw,
@@ -1099,6 +1337,8 @@ def main():
                     ),
                 )
 
+
+                # valid / corrected / quarantined
                 status = result[
                     "quality_status"
                 ]
@@ -1107,14 +1347,17 @@ def main():
                     status
                 ] += 1
 
-                # -----------------------------------------------
-                # RULE + ERROR METRICS
-                # -----------------------------------------------
 
+                # =================================================
+                # RULE + ERROR METRICS
+                # =================================================
+
+                # عدّ أنواع التصحيحات.
                 for correction in result.get(
                     "corrections",
                     [],
                 ):
+
                     correction_rule_counts[
                         correction.get(
                             "rule_code",
@@ -1122,36 +1365,45 @@ def main():
                         )
                     ] += 1
 
+
+                # عدّ Error Codes بدون تكرار نفس الكود داخل السجل.
                 for code in set(
                     result.get(
                         "codes_error",
                         [],
                     )
                 ):
+
                     error_code_counts[
                         code
                     ] += 1
 
-                # -----------------------------------------------
+
+                # =================================================
                 # VALID / CORRECTED
-                # -----------------------------------------------
+                # =================================================
 
                 if status in {
                     QUALITY_VALID,
                     QUALITY_CORRECTED,
                 }:
 
+                    # Validated Record يجب أن يملك order_id.
                     if not order_id:
+
                         raise RuntimeError(
                             "Validated candidate has "
                             "no order_id."
                         )
 
+
+                    # هل يوجد نفس order_id سابقًا؟
                     existing = (
                         validated_state.get(
                             order_id
                         )
                     )
+
 
                     first_processed_at = (
                         existing.get(
@@ -1161,6 +1413,8 @@ def main():
                         else None
                     )
 
+
+                    # بناء Document النهائي وحساب Fingerprint.
                     (
                         key,
                         new_fingerprint,
@@ -1173,6 +1427,7 @@ def main():
                         first_processed_at,
                     )
 
+
                     old_fingerprint = (
                         existing.get(
                             "fingerprint"
@@ -1181,27 +1436,47 @@ def main():
                         else None
                     )
 
+
+                    # =================================================
+                    # IDEMPOTENCY
+                    # Existing + Same Fingerprint = Unchanged
+                    # =================================================
+
                     if (
                         existing
                         and old_fingerprint
                         == new_fingerprint
                     ):
+
                         validated_write_counts[
                             "unchanged"
                         ] += 1
 
+
+                    # =================================================
+                    # NEW OR CHANGED RECORD
+                    # =================================================
+
                     else:
 
+                        # موجود لكن تغير المحتوى.
                         if existing:
+
                             validated_write_counts[
                                 "updated"
                             ] += 1
 
+                        # غير موجود سابقًا.
                         else:
+
                             validated_write_counts[
                                 "inserted"
                             ] += 1
 
+
+                        # ReplaceOne + upsert:
+                        # موجود → Update
+                        # غير موجود → Insert
                         validated_operations.append(
                             ReplaceOne(
                                 {
@@ -1212,10 +1487,14 @@ def main():
                             )
                         )
 
+
+                        # تحديث State داخل الذاكرة
+                        # حتى لو ظهر نفس Key داخل نفس Batch.
                         validated_state[key] = {
                             "fingerprint": (
                                 new_fingerprint
                             ),
+
                             "first_processed_at": (
                                 final_document[
                                     "first_processed_at"
@@ -1223,9 +1502,10 @@ def main():
                             ),
                         }
 
-                # -----------------------------------------------
+
+                # =================================================
                 # QUARANTINE
-                # -----------------------------------------------
+                # =================================================
 
                 elif status == QUALITY_QUARANTINED:
 
@@ -1235,6 +1515,8 @@ def main():
                         )
                     )
 
+
+                    # مفتاح مؤقت/ثابت للسجل المعزول.
                     provisional_key = (
                         f"{raw_run_id}:"
                         f"{source_row_number}"
@@ -1245,11 +1527,14 @@ def main():
                         f"{raw_document['_id']}"
                     )
 
+
+                    # هل هذا Quarantine Record موجود سابقًا؟
                     existing = (
                         quarantine_state.get(
                             provisional_key
                         )
                     )
+
 
                     first_processed_at = (
                         existing.get(
@@ -1259,6 +1544,8 @@ def main():
                         else None
                     )
 
+
+                    # بناء Quarantine Document + Fingerprint.
                     (
                         key,
                         new_fingerprint,
@@ -1271,6 +1558,7 @@ def main():
                         first_processed_at,
                     )
 
+
                     old_fingerprint = (
                         existing.get(
                             "fingerprint"
@@ -1279,26 +1567,35 @@ def main():
                         else None
                     )
 
+
+                    # نفس السجل ونفس الأخطاء = Unchanged.
                     if (
                         existing
                         and old_fingerprint
                         == new_fingerprint
                     ):
+
                         quarantine_write_counts[
                             "unchanged"
                         ] += 1
 
+
                     else:
 
+                        # موجود لكن حالته تغيرت.
                         if existing:
+
                             quarantine_write_counts[
                                 "updated"
                             ] += 1
 
+                        # سجل جديد.
                         else:
+
                             quarantine_write_counts[
                                 "inserted"
                             ] += 1
+
 
                         quarantine_operations.append(
                             ReplaceOne(
@@ -1310,10 +1607,12 @@ def main():
                             )
                         )
 
+
                         quarantine_state[key] = {
                             "fingerprint": (
                                 new_fingerprint
                             ),
+
                             "first_processed_at": (
                                 quarantine_document[
                                     "first_processed_at"
@@ -1321,15 +1620,20 @@ def main():
                             ),
                         }
 
+
+                # أي Status غير معروف يعتبر خطأ في المنطق.
                 else:
+
                     raise RuntimeError(
                         f"Unexpected quality status: "
                         f"{status!r}"
                     )
 
-                # -----------------------------------------------
+
+                # =================================================
                 # FLUSH VALIDATED
-                # -----------------------------------------------
+                # كل 1000 عملية كتابة
+                # =================================================
 
                 if (
                     len(
@@ -1337,6 +1641,7 @@ def main():
                     )
                     >= WRITE_BATCH_SIZE
                 ):
+
                     summary = flush_operations(
                         validated_collection,
                         validated_operations,
@@ -1354,9 +1659,10 @@ def main():
                         "modified"
                     ]
 
-                # -----------------------------------------------
+
+                # =================================================
                 # FLUSH QUARANTINE
-                # -----------------------------------------------
+                # =================================================
 
                 if (
                     len(
@@ -1364,6 +1670,7 @@ def main():
                     )
                     >= WRITE_BATCH_SIZE
                 ):
+
                     summary = flush_operations(
                         quarantine_collection,
                         quarantine_operations,
@@ -1381,15 +1688,24 @@ def main():
                         "modified"
                     ]
 
+
+                # =================================================
+                # PROGRESS
+                # هذا مجرد طباعة كل 10000 سجل.
+                # لا يعني أن Batch المعالجة = 10000.
+                # =================================================
+
                 if (
                     scanned % 10000 == 0
                     or scanned == raw_count
                 ):
+
                     elapsed_now = (
                         time.perf_counter()
                         - started
                     )
 
+                    # متوسط Throughput منذ بداية المعالجة.
                     speed = (
                         scanned / elapsed_now
                         if elapsed_now > 0
@@ -1405,7 +1721,12 @@ def main():
                         f"records/sec"
                     )
 
-        # Flush remaining writes.
+
+        # ====================================================
+        # FLUSH REMAINING WRITES
+        # كتابة ما تبقى بعد انتهاء جميع السجلات
+        # ====================================================
+
         summary = flush_operations(
             validated_collection,
             validated_operations,
@@ -1422,6 +1743,7 @@ def main():
         ] += summary[
             "modified"
         ]
+
 
         summary = flush_operations(
             quarantine_collection,
@@ -1440,6 +1762,11 @@ def main():
             "modified"
         ]
 
+
+        # ====================================================
+        # PERFORMANCE
+        # ====================================================
+
         elapsed_seconds = (
             time.perf_counter()
             - started
@@ -1451,13 +1778,15 @@ def main():
             else 0
         )
 
+
         # ====================================================
-        # FINAL CONSISTENCY GATES
+        # [6/6] FINAL CONSISTENCY GATES
         # ====================================================
 
         print(
             "\n[6/6] Running final consistency gates..."
         )
+
 
         valid_count = status_counts[
             QUALITY_VALID
@@ -1471,13 +1800,18 @@ def main():
             QUALITY_QUARANTINED
         ]
 
+
+        # أهم معادلة:
+        # Raw = Valid + Corrected + Quarantined
         classified_total = (
             valid_count
             + corrected_count
             + quarantine_count
         )
 
+
         if classified_total != raw_count:
+
             raise RuntimeError(
                 "Classification equation failed: "
                 f"{raw_count} != "
@@ -1486,8 +1820,12 @@ def main():
                 f"{quarantine_count}"
             )
 
-        # Compare with the approved 100K Dry Run only
-        # when that contract applies.
+
+        # ====================================================
+        # DRY RUN COMPARISON
+        # فقط إذا كان Dry Run Contract مستخدمًا
+        # ====================================================
+
         if dry_classification is not None:
 
             expected_valid = int(
@@ -1508,6 +1846,7 @@ def main():
                 ]
             )
 
+
             if (
                 valid_count
                 != expected_valid
@@ -1516,15 +1855,20 @@ def main():
                 or quarantine_count
                 != expected_quarantine
             ):
+
                 raise RuntimeError(
                     "Classification changed since "
                     "the approved Dry Run."
                 )
 
+
+        # Validated Collection يجب أن تحتوي:
+        # Valid + Corrected
         expected_validated = (
             valid_count
             + corrected_count
         )
+
 
         validated_after = (
             validated_collection.count_documents(
@@ -1532,6 +1876,8 @@ def main():
             )
         )
 
+
+        # عدد Quarantine Records الخاصة بهذا Raw Run.
         quarantine_current_run = (
             quarantine_collection.count_documents(
                 {
@@ -1542,10 +1888,16 @@ def main():
             )
         )
 
+
+        # ====================================================
+        # PHYSICAL MONGODB COUNT CHECKS
+        # ====================================================
+
         if (
             validated_after
             != expected_validated
         ):
+
             raise RuntimeError(
                 "Validated count mismatch: "
                 f"expected="
@@ -1554,10 +1906,12 @@ def main():
                 f"{validated_after}"
             )
 
+
         if (
             quarantine_current_run
             != quarantine_count
         ):
+
             raise RuntimeError(
                 "Quarantine count mismatch: "
                 f"expected="
@@ -1566,7 +1920,8 @@ def main():
                 f"{quarantine_current_run}"
             )
 
-        # Logical insert counts should equal Mongo upserts.
+
+        # Logical Insert Count يجب أن يطابق MongoDB Upserted Count.
         if (
             validated_write_counts[
                 "inserted"
@@ -1575,10 +1930,12 @@ def main():
                 "validated_upserted"
             ]
         ):
+
             raise RuntimeError(
                 "Validated inserted/upserted "
                 "count mismatch."
             )
+
 
         if (
             quarantine_write_counts[
@@ -1588,13 +1945,16 @@ def main():
                 "quarantine_upserted"
             ]
         ):
+
             raise RuntimeError(
                 "Quarantine inserted/upserted "
                 "count mismatch."
             )
 
+
         # ====================================================
         # REPORT
+        # إنشاء التقرير النهائي
         # ====================================================
 
         report = {
@@ -1607,6 +1967,7 @@ def main():
             ),
 
             "raw_count": raw_count,
+
 
             "classification": {
                 "valid_count": (
@@ -1625,6 +1986,7 @@ def main():
                     classified_total
                 ),
             },
+
 
             "validated_write": {
                 "inserted_count": (
@@ -1646,6 +2008,7 @@ def main():
                 ),
             },
 
+
             "quarantine_write": {
                 "inserted_count": (
                     quarantine_write_counts[
@@ -1666,6 +2029,7 @@ def main():
                 ),
             },
 
+
             "collection_counts": {
                 "orders_validated": (
                     validated_after
@@ -1675,6 +2039,7 @@ def main():
                     quarantine_current_run
                 ),
             },
+
 
             "duplicates": {
                 "group_count": len(
@@ -1686,13 +2051,16 @@ def main():
                 ),
             },
 
+
             "error_code_counts": dict(
                 error_code_counts.most_common()
             ),
 
+
             "correction_rule_counts": dict(
                 correction_rule_counts.most_common()
             ),
+
 
             "performance": {
                 "elapsed_seconds": round(
@@ -1707,6 +2075,7 @@ def main():
                     )
                 ),
             },
+
 
             "consistency": {
                 "raw_equals_classified": (
@@ -1742,15 +2111,22 @@ def main():
             },
         }
 
+
+        # ====================================================
+        # SAVE REPORT
+        # ====================================================
+
         output_path = (
             REPORTS_DIR
             / "elt_write_report.json"
         )
 
+
         with output_path.open(
             "w",
             encoding="utf-8",
         ) as file:
+
             json.dump(
                 report,
                 file,
@@ -1759,15 +2135,19 @@ def main():
                 default=str,
             )
 
+
         # ====================================================
         # PRINT FINAL SUMMARY
         # ====================================================
 
         print("\n" + "=" * 92)
+
         print(
             "PHASE 12 ELT WRITE SUMMARY"
         )
+
         print("=" * 92)
+
 
         print(
             f"Raw                    : "
@@ -1794,6 +2174,7 @@ def main():
             f"{classified_total:>10,}"
         )
 
+
         print(
             "\nVALIDATED WRITE:"
         )
@@ -1812,6 +2193,7 @@ def main():
             f"  Unchanged            : "
             f"{validated_write_counts['unchanged']:>10,}"
         )
+
 
         print(
             "\nQUARANTINE WRITE:"
@@ -1832,6 +2214,7 @@ def main():
             f"{quarantine_write_counts['unchanged']:>10,}"
         )
 
+
         print(
             "\nFINAL COLLECTIONS:"
         )
@@ -1845,6 +2228,7 @@ def main():
             f"  orders_quarantine    : "
             f"{quarantine_current_run:>10,}"
         )
+
 
         print(
             "\nCONSISTENCY:"
@@ -1861,6 +2245,7 @@ def main():
             "  Raw classification equation : PASS"
         )
 
+
         if dry_classification is not None:
 
             print(
@@ -1874,9 +2259,11 @@ def main():
                 "N/A - official large run"
             )
 
+
         print(
             "  Unique order_id index        : PASS"
         )
+
 
         print(
             "\nPERFORMANCE:"
@@ -1893,22 +2280,36 @@ def main():
             f"records/sec"
         )
 
+
         print(
             "\nReport:"
         )
 
-        print(output_path)
+        print(
+            output_path
+        )
+
 
         print("\n" + "=" * 92)
+
         print(
             "PHASE 12 ELT FINAL WRITE: PASS"
         )
+
         print("=" * 92)
 
+
+    # ========================================================
+    # CLEANUP
+    # إغلاق MongoDB Client حتى لو حدث خطأ
+    # ========================================================
+
     finally:
+
         if client is not None:
             client.close()
 
 
+# تشغيل main فقط عندما نشغل الملف مباشرة.
 if __name__ == "__main__":
     main()

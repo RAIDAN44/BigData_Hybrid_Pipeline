@@ -1,3 +1,18 @@
+"""
+spark_loader.py
+
+المهمة:
+هذا الملف مسؤول عن إدخال الملفات الكبيرة إلى MongoDB باستخدام PySpark.
+
+الفكرة:
+- قراءة CSV الكبير باستخدام Spark DataFrame.
+- تقسيم العمل على Partitions لمعالجة متوازية.
+- الاحتفاظ بالبيانات Raw بدون Cleaning.
+- إضافة Metadata لكل سجل.
+- الكتابة إلى MongoDB باستخدام MongoDB Spark Connector.
+- التحقق بعد الإدخال أن عدد السجلات صحيح ولا توجد CSV Corrupt Records.
+"""
+
 import argparse
 import json
 import os
@@ -9,8 +24,11 @@ from pathlib import Path
 
 from pymongo import MongoClient
 
+# أدوات PySpark
 from pyspark import StorageLevel
 from pyspark.sql import SparkSession
+
+# دوال تستخدم في بناء وتحويل DataFrame.
 from pyspark.sql.functions import (
     col,
     current_timestamp,
@@ -20,12 +38,15 @@ from pyspark.sql.functions import (
     struct,
     trim,
 )
+
+# أنواع Schema الخاصة بـ Spark.
 from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
 )
 
+# إعدادات المشروع.
 from config.settings import (
     MONGO_URI,
     MONGO_DATABASE,
@@ -41,6 +62,7 @@ from config.settings import (
 
 # ============================================================
 # SOURCE CONTRACT
+# الأعمدة التي نتوقع وجودها في CSV
 # ============================================================
 
 RAW_COLUMNS = [
@@ -63,24 +85,22 @@ RAW_COLUMNS = [
     "items_json",
 ]
 
+# Spark يضع هنا الصف الذي فشل Parsing الخاص به.
 CORRUPT_COLUMN = "_corrupt_record"
 
+# Prefix خاص بالـ Collections المؤقتة للاختبارات.
 TEMP_COLLECTION_PREFIX = "_spark_"
 
 
 # ============================================================
 # SCHEMA
+# تعريف شكل CSV بشكل صريح
 # ============================================================
 
 def build_csv_schema():
-    """
-    Explicit schema:
-    all source fields remain strings.
 
-    This prevents Spark from cleaning, coercing,
-    or inferring dirty business values before Raw loading.
-    """
-
+    # نحفظ كل قيم المصدر كـ String حتى لا يغير Spark
+    # البيانات الخام قبل مرحلة Cleaning.
     fields = [
         StructField(
             name,
@@ -90,7 +110,7 @@ def build_csv_schema():
         for name in RAW_COLUMNS
     ]
 
-    # Spark PERMISSIVE mode can preserve parser failures here.
+    # عمود خاص بالصفوف التالفة أثناء CSV Parsing.
     fields.append(
         StructField(
             CORRUPT_COLUMN,
@@ -104,11 +124,14 @@ def build_csv_schema():
 
 # ============================================================
 # CONNECTOR JAR DISCOVERY
+# البحث عن ملفات MongoDB Spark Connector
 # ============================================================
 
 def _jar_candidates():
+
     home = Path.home()
 
+    # أماكن شائعة تخزن فيها Java/Spark Dependencies.
     roots = [
         home / ".ivy2" / "jars",
         home / ".ivy2" / "cache",
@@ -125,23 +148,22 @@ def _jar_candidates():
 
 def discover_mongo_jars():
     """
-    Prefer an explicit environment override if supplied.
-
-    Otherwise find the already-cached MongoDB Spark Connector
-    and MongoDB Java driver dependencies.
+    العثور على MongoDB Spark Connector والـ Java Drivers المطلوبة.
     """
 
+    # يمكن تحديد JARs يدويًا باستخدام Environment Variable.
     override = os.getenv(
         "MONGO_SPARK_JARS",
         "",
     ).strip()
 
     if override:
-        separators = [";", ","]
 
+        separators = [";", ","]
         values = [override]
 
         for separator in separators:
+
             split_values = []
 
             for value in values:
@@ -171,66 +193,52 @@ def discover_mongo_jars():
 
         return jars
 
+
+    # المكتبات الأساسية المطلوبة للربط مع MongoDB.
     required_patterns = {
-        "connector": (
-            "mongo-spark-connector_2.13"
-        ),
-        "driver_sync": (
-            "mongodb-driver-sync"
-        ),
-        "driver_core": (
-            "mongodb-driver-core"
-        ),
+        "connector": "mongo-spark-connector_2.13",
+        "driver_sync": "mongodb-driver-sync",
+        "driver_core": "mongodb-driver-core",
         "bson": "bson-",
     }
 
     found = {}
 
+    # البحث داخل Cache الجهاز.
     for root in _jar_candidates():
 
         try:
+
             iterator = root.rglob("*.jar")
 
             for jar in iterator:
 
                 name = jar.name.lower()
 
-                for key, pattern in (
-                    required_patterns.items()
-                ):
+                for key, pattern in required_patterns.items():
 
                     if (
                         key not in found
                         and pattern.lower() in name
                     ):
-                        found[key] = (
-                            str(jar.resolve())
+                        found[key] = str(
+                            jar.resolve()
                         )
 
-                # Optional but useful dependency.
+                # Dependency إضافية اختيارية.
                 if (
-                    "bson_record_codec"
-                    not in found
-                    and "bson-record-codec"
-                    in name
+                    "bson_record_codec" not in found
+                    and "bson-record-codec" in name
                 ):
-                    found[
-                        "bson_record_codec"
-                    ] = str(
+                    found["bson_record_codec"] = str(
                         jar.resolve()
                     )
-
-                if all(
-                    key in found
-                    for key in required_patterns
-                ):
-                    # Keep scanning briefly unnecessary;
-                    # dependencies already found.
-                    pass
 
         except PermissionError:
             continue
 
+
+    # التأكد أن كل Dependencies الأساسية موجودة.
     missing = [
         key
         for key in required_patterns
@@ -238,6 +246,7 @@ def discover_mongo_jars():
     ]
 
     if missing:
+
         searched = "\n".join(
             str(path)
             for path in _jar_candidates()
@@ -251,7 +260,7 @@ def discover_mongo_jars():
             "Do not continue to the large file."
         )
 
-    # Deterministic order.
+
     order = [
         "connector",
         "driver_sync",
@@ -269,19 +278,24 @@ def discover_mongo_jars():
 
 # ============================================================
 # SPARK SESSION
+# إنشاء بيئة Spark
 # ============================================================
 
 def create_spark_session(jars):
+
     classpath = os.pathsep.join(
         jars
     )
 
+    # إنشاء SparkSession باستخدام الإعدادات الموجودة في settings.py.
     builder = (
         SparkSession.builder
         .master(SPARK_MASTER)
         .appName(
             f"{SPARK_APP_NAME}-RawLoader"
         )
+
+        # تحميل MongoDB Connector JARs.
         .config(
             "spark.jars",
             ",".join(jars),
@@ -294,17 +308,20 @@ def create_spark_session(jars):
             "spark.executor.extraClassPath",
             classpath,
         )
+
+        # اتصال MongoDB.
         .config(
             "spark.mongodb.write.connection.uri",
             MONGO_URI,
         )
+
+        # توحيد التوقيت إلى UTC.
         .config(
             "spark.sql.session.timeZone",
             "UTC",
         )
 
-        # We want corrupt-record detection to be
-        # independent from column pruning.
+        # ضمان كشف Corrupt Records بشكل صحيح.
         .config(
             "spark.sql.csv.parser."
             "columnPruning.enabled",
@@ -323,28 +340,32 @@ def create_spark_session(jars):
 
 # ============================================================
 # CSV READ
+# قراءة CSV باستخدام Spark
 # ============================================================
 
 def read_raw_csv(
     spark,
     input_path,
 ):
+
     schema = build_csv_schema()
 
     dataframe = (
         spark.read
         .format("csv")
+
+        # أول صف هو Header.
         .option(
             "header",
             "true",
         )
+
         .option(
             "encoding",
             "UTF-8",
         )
 
-        # Dataset CSV was written with standard double-quote
-        # escaping: embedded quotes are represented as "".
+        # إعدادات التعامل مع علامات الاقتباس داخل CSV.
         .option(
             "quote",
             '"',
@@ -354,23 +375,32 @@ def read_raw_csv(
             '"',
         )
 
+        # PERMISSIVE يسمح بحفظ الصف التالف بدل إسقاطه مباشرة.
         .option(
             "mode",
             "PERMISSIVE",
         )
+
         .option(
             "columnNameOfCorruptRecord",
             CORRUPT_COLUMN,
         )
+
         .option(
             "multiLine",
             "false",
         )
+
+        # السماح بحقول طويلة مثل items_json.
         .option(
             "maxCharsPerColumn",
             "-1",
         )
+
+        # استخدام Schema ثابتة بدل Auto Inference.
         .schema(schema)
+
+        # Spark يقرأ الملف ويوزعه على Partitions.
         .load(str(input_path))
     )
 
@@ -379,6 +409,7 @@ def read_raw_csv(
 
 # ============================================================
 # RAW DOCUMENT SHAPE
+# بناء شكل Document الذي سيذهب إلى MongoDB
 # ============================================================
 
 def build_raw_output(
@@ -386,10 +417,12 @@ def build_raw_output(
     input_path,
     run_id,
 ):
+
     path = Path(
         input_path
     ).resolve()
 
+    # تجميع أعمدة CSV داخل raw_record.
     raw_struct = struct(
         *[
             col(name).alias(name)
@@ -398,10 +431,13 @@ def build_raw_output(
     )
 
     return dataframe.select(
+
+        # معرف التشغيل.
         lit(run_id).alias(
             "run_id"
         ),
 
+        # اسم ومسار المصدر.
         lit(path.name).alias(
             "source_file"
         ),
@@ -410,8 +446,8 @@ def build_raw_output(
             "source_path"
         ),
 
-        # Spark distributed CSV reading does not provide
-        # a trustworthy contiguous physical source line.
+        # Spark لا يعطينا رقم سطر CSV متسلسل موثوق
+        # بسبب القراءة الموزعة على Partitions.
         lit(None)
         .cast("long")
         .alias(
@@ -422,24 +458,29 @@ def build_raw_output(
             "source_row_number_available"
         ),
 
+        # وقت الإدخال.
         current_timestamp().alias(
             "ingested_at"
         ),
 
+        # المحرك المستخدم.
         lit("pyspark").alias(
             "engine_used"
         ),
 
+        # رقم Partition التي عالجت السجل.
         spark_partition_id().alias(
             "spark_partition_id"
         ),
 
+        # إذا فشل Parsing للصف يتم حفظه هنا.
         col(
             CORRUPT_COLUMN
         ).alias(
             "csv_corrupt_record"
         ),
 
+        # البيانات الأصلية.
         raw_struct.alias(
             "raw_record"
         ),
@@ -448,14 +489,17 @@ def build_raw_output(
 
 # ============================================================
 # MONGO HELPERS
+# دوال مساعدة للتعامل مع MongoDB
 # ============================================================
 
 def mongo_client():
+
     client = MongoClient(
         MONGO_URI,
         serverSelectionTimeoutMS=5000,
     )
 
+    # اختبار الاتصال.
     client.admin.command(
         "ping"
     )
@@ -464,21 +508,17 @@ def mongo_client():
 
 
 def production_counts(db):
+
+    # حساب عدد Documents في Collections الأساسية.
     return {
         RAW_COLLECTION:
-            db[
-                RAW_COLLECTION
-            ].count_documents({}),
+            db[RAW_COLLECTION].count_documents({}),
 
         VALIDATED_COLLECTION:
-            db[
-                VALIDATED_COLLECTION
-            ].count_documents({}),
+            db[VALIDATED_COLLECTION].count_documents({}),
 
         QUARANTINE_COLLECTION:
-            db[
-                QUARANTINE_COLLECTION
-            ].count_documents({}),
+            db[QUARANTINE_COLLECTION].count_documents({}),
     }
 
 
@@ -486,6 +526,8 @@ def safe_drop_test_collection(
     db,
     collection_name,
 ):
+
+    # حماية: يسمح بالحذف التلقائي فقط للـ Collections المؤقتة.
     if not collection_name.startswith(
         TEMP_COLLECTION_PREFIX
     ):
@@ -505,6 +547,7 @@ def safe_drop_test_collection(
 # ============================================================
 
 def parse_args():
+
     parser = argparse.ArgumentParser(
         description=(
             "PySpark Raw-first CSV loader "
@@ -538,6 +581,7 @@ def parse_args():
         action="store_true",
     )
 
+    # تصريح يسمح بالكتابة في orders_raw الرسمية.
     parser.add_argument(
         "--production-raw",
         action="store_true",
@@ -548,6 +592,7 @@ def parse_args():
         ),
     )
 
+    # Run ID يمكن أن يأتي من main.py.
     parser.add_argument(
         "--run-id",
         default=None,
@@ -565,19 +610,23 @@ def parse_args():
 # ============================================================
 
 def main():
+
     args = parse_args()
 
     input_path = Path(
         args.input
     ).resolve()
 
+    # التأكد أن الملف موجود.
     if not input_path.exists():
         raise FileNotFoundError(
             input_path
         )
 
+
     # ========================================================
-    # PRODUCTION RAW SAFETY CONTRACT
+    # PRODUCTION RAW SAFETY
+    # حماية Collection الرسمية من الحذف أو التنظيف
     # ========================================================
 
     if args.production_raw:
@@ -600,23 +649,25 @@ def main():
                 "production Raw mode."
             )
 
-    file_size_bytes = (
-        input_path.stat().st_size
-    )
+
+    # حساب حجم الملف.
+    file_size_bytes = input_path.stat().st_size
 
     file_size_mb = (
         file_size_bytes
         / (1024 ** 2)
     )
 
-    # Small files can be cached for repeated validation actions.
-    # Large files must remain streaming-oriented to avoid caching
-    # multi-GB input and unnecessary RAM / disk pressure.
+
+    # الملفات الصغيرة يمكن Cache لها أثناء الاختبارات.
+    # الملفات الكبيرة لا نعمل لها Cache حتى لا نضغط RAM/Disk.
     small_validation_mode = (
         file_size_mb
         <= SMALL_FILE_THRESHOLD_MB
     )
 
+
+    # استخدام Run ID من main.py إذا تم تمريره.
     if args.run_id is not None:
 
         run_id = args.run_id.strip()
@@ -643,6 +694,7 @@ def main():
 
     else:
 
+        # إذا لم يصل Run ID ننشئ واحدًا جديدًا.
         run_id = (
             "spark-"
             + datetime.now(
@@ -656,49 +708,25 @@ def main():
 
         run_id_source = "generated"
 
+
     spark = None
     client = None
     dataframe = None
-
     cleanup_done = False
 
     started = time.perf_counter()
 
+
     print("=" * 92)
-    print(
-        "PHASE 14A - PYSPARK RAW LOADER TEST"
-    )
+    print("PHASE 14A - PYSPARK RAW LOADER TEST")
     print("=" * 92)
 
-    print(
-        f"Input                   : "
-        f"{input_path}"
-    )
-
-    print(
-        f"File size               : "
-        f"{file_size_mb:,.2f} MB"
-    )
-
-    print(
-        f"Target database         : "
-        f"{MONGO_DATABASE}"
-    )
-
-    print(
-        f"Target collection       : "
-        f"{args.collection}"
-    )
-
-    print(
-        f"run_id                  : "
-        f"{run_id}"
-    )
-
-    print(
-        "Engine                  : "
-        "PySpark"
-    )
+    print(f"Input                   : {input_path}")
+    print(f"File size               : {file_size_mb:,.2f} MB")
+    print(f"Target database         : {MONGO_DATABASE}")
+    print(f"Target collection       : {args.collection}")
+    print(f"run_id                  : {run_id}")
+    print("Engine                  : PySpark")
 
     print(
         "Execution mode          : "
@@ -720,21 +748,24 @@ def main():
 
     print("=" * 92)
 
+
     try:
+
         # ====================================================
-        # 1. MONGO PRE-CHECK
+        # 1. MONGODB PRE-CHECK
         # ====================================================
 
         client = mongo_client()
+
         db = client[
             MONGO_DATABASE
         ]
 
-        production_before = (
-            production_counts(
-                db
-            )
+        # حفظ أعداد Collections قبل التشغيل.
+        production_before = production_counts(
+            db
         )
+
 
         if args.production_raw:
 
@@ -744,6 +775,7 @@ def main():
                 ].count_documents({})
             )
 
+            # منع تشغيل نفس run_id مرتين.
             existing_same_run = (
                 db[
                     RAW_COLLECTION
@@ -775,6 +807,7 @@ def main():
                 "Existing same run_id    : 0 - PASS"
             )
 
+
         elif args.drop_target:
 
             safe_drop_test_collection(
@@ -785,6 +818,7 @@ def main():
             print(
                 "\n[1/7] Test target reset: PASS"
             )
+
 
         else:
 
@@ -806,6 +840,7 @@ def main():
                 "\n[1/7] Empty target check: PASS"
             )
 
+
         # ====================================================
         # 2. CONNECTOR JARS
         # ====================================================
@@ -826,6 +861,7 @@ def main():
             "Connector dependencies  : PASS"
         )
 
+
         # ====================================================
         # 3. SPARK SESSION
         # ====================================================
@@ -838,9 +874,7 @@ def main():
             jars
         )
 
-        spark_version = (
-            spark.version
-        )
+        spark_version = spark.version
 
         scala_version = (
             spark.sparkContext
@@ -873,8 +907,10 @@ def main():
             f"{ui_url}"
         )
 
+
         # ====================================================
-        # 4. READ WITH FIXED SCHEMA
+        # 4. READ CSV
+        # Spark يقسم الملف إلى Partitions ويقرأها بالتوازي
         # ====================================================
 
         print(
@@ -887,6 +923,7 @@ def main():
             input_path,
         )
 
+        # عدد Partitions التي قسم Spark البيانات إليها.
         partitions = (
             dataframe.rdd
             .getNumPartitions()
@@ -897,14 +934,15 @@ def main():
             f"{partitions}"
         )
 
+
         rows_read = None
         corrupt_rows = None
 
+
         if small_validation_mode:
 
-            # Small validation file:
-            # cache once because we deliberately execute
-            # multiple validation actions before writing.
+            # في الاختبارات الصغيرة نعمل Cache
+            # لأننا سننفذ أكثر من Action على نفس DataFrame.
             dataframe.persist(
                 StorageLevel.MEMORY_AND_DISK
             )
@@ -913,6 +951,7 @@ def main():
                 dataframe.count()
             )
 
+            # حساب صفوف CSV التالفة.
             corrupt_rows = (
                 dataframe
                 .filter(
@@ -953,6 +992,7 @@ def main():
                 "CSV parsing integrity    : PASS"
             )
 
+
             if (
                 args.expected_rows
                 is not None
@@ -961,19 +1001,15 @@ def main():
             ):
                 raise RuntimeError(
                     "Spark row-count mismatch: "
-                    f"expected="
-                    f"{args.expected_rows:,}, "
-                    f"actual="
-                    f"{rows_read:,}"
+                    f"expected={args.expected_rows:,}, "
+                    f"actual={rows_read:,}"
                 )
+
 
         else:
 
-            # Large-file mode:
-            # do NOT execute count() before the connector write.
-            # The MongoDB write itself is the full Spark action.
-            # Counts and corrupt-row integrity are verified
-            # from the written run afterwards.
+            # في الملفات الكبيرة نتجنب count() قبل الكتابة،
+            # لأن count نفسها Spark Action وستقرأ الملف بالكامل.
             print(
                 "Pre-write full count    : SKIPPED"
             )
@@ -986,7 +1022,8 @@ def main():
                 "Large-file cache        : DISABLED"
             )
 
-        # Verify source contract.
+
+        # التأكد أن Schema الفعلية مطابقة للعقد المتوقع.
         actual_columns = [
             field.name
             for field
@@ -1004,9 +1041,10 @@ def main():
                 "does not match contract."
             )
 
-        for field in (
-            dataframe.schema.fields
-        ):
+
+        # كل حقول Raw يجب أن تبقى Strings.
+        for field in dataframe.schema.fields:
+
             if not isinstance(
                 field.dataType,
                 StringType,
@@ -1020,8 +1058,9 @@ def main():
             "Fixed String schema      : PASS"
         )
 
+
         # ====================================================
-        # 5. BUILD RAW-FIRST DOCUMENTS
+        # 5. BUILD RAW DOCUMENTS
         # ====================================================
 
         print(
@@ -1035,6 +1074,7 @@ def main():
             run_id,
         )
 
+        # عدد Partitions بعد تجهيز Output.
         output_partitions = (
             raw_output.rdd
             .getNumPartitions()
@@ -1049,8 +1089,10 @@ def main():
             "Raw metadata             : PASS"
         )
 
+
         # ====================================================
-        # 6. WRITE VIA SPARK CONNECTOR
+        # 6. WRITE TO MONGODB
+        # الكتابة المتوازية عبر Spark Connector
         # ====================================================
 
         print(
@@ -1064,7 +1106,11 @@ def main():
 
         (
             raw_output.write
+
+            # استخدام MongoDB Spark Connector.
             .format("mongodb")
+
+            # إضافة البيانات الجديدة بدون حذف القديمة.
             .mode("append")
 
             .option(
@@ -1082,19 +1128,22 @@ def main():
                 args.collection,
             )
 
-            # Raw layer = new ingestion attempt.
+            # Raw layer تستخدم Insert.
             .option(
                 "operationType",
                 "insert",
             )
 
+            # السماح بإدخال Parallel/Unordered.
             .option(
                 "ordered",
                 "false",
             )
 
+            # هذه Spark Action الفعلية التي تبدأ التنفيذ.
             .save()
         )
+
 
         write_elapsed = (
             time.perf_counter()
@@ -1106,8 +1155,9 @@ def main():
             f"{write_elapsed:.2f} sec"
         )
 
+
         # ====================================================
-        # 7. VERIFY MONGO + CLEANUP
+        # 7. VERIFY MONGODB
         # ====================================================
 
         print(
@@ -1118,6 +1168,7 @@ def main():
             args.collection
         ]
 
+        # عدد السجلات الخاصة بهذا Run فقط.
         mongo_run_count = (
             target.count_documents(
                 {
@@ -1126,10 +1177,12 @@ def main():
             )
         )
 
+        # العدد الكلي في Collection.
         mongo_total_count = (
             target.count_documents({})
         )
 
+        # حساب Corrupt Records بعد الكتابة.
         mongo_corrupt_rows = (
             target.count_documents(
                 {
@@ -1144,21 +1197,24 @@ def main():
             )
         )
 
-        # In large mode we intentionally avoid pre-write Spark
-        # count actions. The completed MongoDB run is therefore
-        # the authoritative loaded-row count.
+
+        # في الملف الكبير لم نعمل Spark count قبل الكتابة،
+        # لذلك نستخدم عدد Documents المكتوبة لهذا Run.
         if rows_read is None:
             rows_read = mongo_run_count
 
         if corrupt_rows is None:
             corrupt_rows = mongo_corrupt_rows
 
+
+        # التأكد أن Spark وMongoDB متوافقان.
         if mongo_run_count != rows_read:
             raise RuntimeError(
                 "Mongo/Spark count mismatch: "
                 f"Spark={rows_read:,}, "
                 f"Mongo={mongo_run_count:,}"
             )
+
 
         if mongo_corrupt_rows != corrupt_rows:
             raise RuntimeError(
@@ -1167,11 +1223,13 @@ def main():
                 f"Mongo={mongo_corrupt_rows:,}"
             )
 
+
         if corrupt_rows != 0:
             raise RuntimeError(
                 "CSV parsing integrity failure after Raw load: "
                 f"{corrupt_rows:,} structurally corrupt rows."
             )
+
 
         print(
             f"Mongo corrupt rows      : "
@@ -1182,6 +1240,8 @@ def main():
             "CSV parsing integrity    : PASS"
         )
 
+
+        # أخذ سجل Sample للتحقق من شكل Document.
         sample_document = (
             target.find_one(
                 {
@@ -1199,6 +1259,8 @@ def main():
                 "found after Spark write."
             )
 
+
+        # Metadata التي يجب أن تكون موجودة.
         required_metadata = {
             "run_id",
             "source_file",
@@ -1211,6 +1273,7 @@ def main():
             "csv_corrupt_record",
             "raw_record",
         }
+
 
         missing_metadata = (
             required_metadata
@@ -1225,6 +1288,8 @@ def main():
                 f"{sorted(missing_metadata)}"
             )
 
+
+        # التأكد أن السجل كتب بواسطة PySpark.
         if (
             sample_document.get(
                 "engine_used"
@@ -1234,6 +1299,7 @@ def main():
             raise RuntimeError(
                 "engine_used is not pyspark."
             )
+
 
         sample_raw = (
             sample_document.get(
@@ -1250,6 +1316,8 @@ def main():
                 "as a nested document."
             )
 
+
+        # التأكد أن جميع أعمدة المصدر محفوظة.
         missing_raw_fields = (
             set(RAW_COLUMNS)
             - set(sample_raw.keys())
@@ -1261,6 +1329,7 @@ def main():
                 f"raw_record: "
                 f"{sorted(missing_raw_fields)}"
             )
+
 
         print(
             f"Spark rows              : "
@@ -1281,15 +1350,20 @@ def main():
             "Spark = Mongo            : PASS"
         )
 
-        # Production must remain untouched.
-        production_after = (
-            production_counts(
-                db
-            )
+
+        # ====================================================
+        # PRODUCTION SAFETY CHECK
+        # التأكد أن Collections الأخرى لم تتغير
+        # ====================================================
+
+        production_after = production_counts(
+            db
         )
+
 
         if args.production_raw:
 
+            # العدد الجديد المتوقع في orders_raw.
             expected_raw_after = (
                 production_before[
                     RAW_COLLECTION
@@ -1304,6 +1378,7 @@ def main():
                 == expected_raw_after
             )
 
+            # Raw Loader يجب ألا يغير validated أو quarantine.
             validated_unchanged = (
                 production_after[
                     VALIDATED_COLLECTION
@@ -1335,6 +1410,7 @@ def main():
                     "collection counts are inconsistent."
                 )
 
+
         else:
 
             production_safety_pass = (
@@ -1348,18 +1424,31 @@ def main():
                     "during isolated Spark test."
                 )
 
+
+        # ====================================================
+        # PERFORMANCE
+        # ====================================================
+
         elapsed = (
             time.perf_counter()
             - started
         )
 
+        # Overall Throughput.
         throughput = (
             rows_read / elapsed
             if elapsed > 0
             else 0
         )
 
+
+        # ====================================================
+        # REPORT
+        # حفظ تقرير التنفيذ
+        # ====================================================
+
         report = {
+
             "phase": (
                 "phase_14c_large_pyspark_raw"
                 if args.production_raw
@@ -1374,20 +1463,12 @@ def main():
 
             "run_id": run_id,
 
-            "run_id_source": (
-                run_id_source
-            ),
+            "run_id_source": run_id_source,
 
             "input": {
-                "path": str(
-                    input_path
-                ),
-                "file_name": (
-                    input_path.name
-                ),
-                "file_size_bytes": (
-                    file_size_bytes
-                ),
+                "path": str(input_path),
+                "file_name": input_path.name,
+                "file_size_bytes": file_size_bytes,
                 "file_size_mb": round(
                     file_size_mb,
                     2,
@@ -1396,27 +1477,19 @@ def main():
 
             "engine": {
                 "engine_used": "pyspark",
-                "spark_version": (
-                    spark_version
-                ),
-                "scala_version": (
-                    scala_version
-                ),
-                "master": (
-                    spark.sparkContext.master
-                ),
+                "spark_version": spark_version,
+                "scala_version": scala_version,
+                "master": spark.sparkContext.master,
                 "spark_ui": ui_url,
-                "input_partitions": (
-                    partitions
-                ),
-                "output_partitions": (
-                    output_partitions
-                ),
+                "input_partitions": partitions,
+                "output_partitions": output_partitions,
+
                 "execution_mode": (
                     "small_validation_cache"
                     if small_validation_mode
                     else "large_streaming_no_cache"
                 ),
+
                 "cache_enabled": (
                     small_validation_mode
                 ),
@@ -1424,62 +1497,40 @@ def main():
 
             "schema": {
                 "explicit": True,
-                "raw_fields_are_strings": (
-                    True
-                ),
-                "source_columns": (
-                    RAW_COLUMNS
-                ),
-                "corrupt_record_field": (
-                    CORRUPT_COLUMN
-                ),
+                "raw_fields_are_strings": True,
+                "source_columns": RAW_COLUMNS,
+                "corrupt_record_field": CORRUPT_COLUMN,
             },
 
             "counts": {
-                "rows_read": (
-                    rows_read
-                ),
-                "csv_corrupt_records": (
-                    corrupt_rows
-                ),
-                "mongo_run_count": (
-                    mongo_run_count
-                ),
-                "mongo_total_count": (
-                    mongo_total_count
-                ),
+                "rows_read": rows_read,
+                "csv_corrupt_records": corrupt_rows,
+                "mongo_run_count": mongo_run_count,
+                "mongo_total_count": mongo_total_count,
             },
 
             "performance": {
-                "write_elapsed_seconds": (
-                    round(
-                        write_elapsed,
-                        4,
-                    )
+                "write_elapsed_seconds": round(
+                    write_elapsed,
+                    4,
                 ),
-                "total_elapsed_seconds": (
-                    round(
-                        elapsed,
-                        4,
-                    )
+
+                "total_elapsed_seconds": round(
+                    elapsed,
+                    4,
                 ),
-                "throughput_records_per_second": (
-                    round(
-                        throughput,
-                        2,
-                    )
+
+                "throughput_records_per_second": round(
+                    throughput,
+                    2,
                 ),
             },
 
             "connector_jars": jars,
 
-            "production_counts_before": (
-                production_before
-            ),
+            "production_counts_before": production_before,
 
-            "production_counts_after": (
-                production_after
-            ),
+            "production_counts_after": production_after,
 
             "production_unchanged": (
                 production_before
@@ -1494,11 +1545,11 @@ def main():
                 args.production_raw
             ),
 
-            "sample_document": (
-                sample_document
-            ),
+            "sample_document": sample_document,
         }
 
+
+        # تحديد اسم التقرير.
         report_path = (
             REPORTS_DIR
             / (
@@ -1508,10 +1559,13 @@ def main():
             )
         )
 
+
+        # حفظ Report بصيغة JSON.
         with report_path.open(
             "w",
             encoding="utf-8",
         ) as file:
+
             json.dump(
                 report,
                 file,
@@ -1520,8 +1574,10 @@ def main():
                 default=str,
             )
 
+
         # ====================================================
-        # CLEAN ISOLATED TARGET
+        # CLEAN TEMP COLLECTION
+        # تنظيف Collection الاختبارية إذا طلب المستخدم
         # ====================================================
 
         if args.cleanup_after:
@@ -1541,6 +1597,11 @@ def main():
                     "Temporary Spark collection "
                     "was not removed."
                 )
+
+
+        # ====================================================
+        # FINAL SUMMARY
+        # ====================================================
 
         print("\n" + "=" * 92)
         print(
@@ -1594,6 +1655,7 @@ def main():
             f"records/sec"
         )
 
+
         print(
             "\nSAFETY:"
         )
@@ -1634,6 +1696,7 @@ def main():
                 )
             )
 
+
         print(
             "\nReport:"
         )
@@ -1641,13 +1704,22 @@ def main():
         print(report_path)
 
         print("\n" + "=" * 92)
+
         print(
             "PHASE 14A PYSPARK RAW LOADER TEST: PASS"
         )
+
         print("=" * 92)
+
+
+    # ========================================================
+    # CLEANUP
+    # يتم التنفيذ حتى لو حدث Exception
+    # ========================================================
 
     finally:
 
+        # إزالة Cache إذا تم استخدامها.
         if (
             dataframe is not None
             and small_validation_mode
@@ -1657,19 +1729,27 @@ def main():
             except Exception:
                 pass
 
+
+        # إيقاف SparkSession.
         if spark is not None:
+
             try:
                 spark.stop()
             except Exception:
                 pass
 
+
+        # إغلاق MongoDB Client.
         if client is not None:
 
+            # محاولة تنظيف Collection المؤقتة عند الفشل.
             if (
                 args.cleanup_after
                 and not cleanup_done
             ):
+
                 try:
+
                     db = client[
                         MONGO_DATABASE
                     ]
@@ -1685,5 +1765,6 @@ def main():
             client.close()
 
 
+# تشغيل main فقط عند تشغيل الملف مباشرة.
 if __name__ == "__main__":
     main()

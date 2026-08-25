@@ -1,0 +1,94 @@
+{
+  "source": "VIVA official snapshot — historical verified evidence",
+  "data": {
+    "router": {
+      "threshold_mb": 200,
+      "small_engine": "python_batch",
+      "large_engine": "pyspark"
+    },
+    "runs": {
+      "small_python_batch": {
+        "file_size_mb": 41.77,
+        "rows_read": 100000,
+        "raw_loaded": 100000,
+        "valid_count": 70002,
+        "corrected_count": 21697,
+        "quarantine_count": 8301,
+        "batch_size": 5000,
+        "raw_load_performance": {
+          "elapsed_seconds": 28.873,
+          "throughput_records_per_second": 3463.47,
+          "batches": 20
+        },
+        "quality_elt_performance": {
+          "elapsed_seconds": 36.011,
+          "throughput_records_per_second": 2776.93
+        }
+      },
+      "large_pyspark": {
+        "file_size_mb": 12650.32,
+        "rows_read": 30000000,
+        "raw_loaded": 30000000,
+        "valid_count": 20994411,
+        "corrected_count": 6501781,
+        "quarantine_count": 2503808,
+        "partitions": 99,
+        "csv_corrupt_records": 0,
+        "raw_load_performance": {
+          "elapsed_seconds": 636.5871,
+          "throughput_records_per_second": 47126.31,
+          "input_partitions": 99,
+          "output_partitions": 99
+        },
+        "quality_elt_performance": {
+          "elapsed_seconds": 28965.1154,
+          "throughput_records_per_second": 1035.73
+        }
+      }
+    },
+    "consistency": {
+      "small": {
+        "equation": "100000 = 70002 + 21697 + 8301",
+        "pass": true
+      },
+      "large": {
+        "equation": "30000000 = 20994411 + 6501781 + 2503808",
+        "pass": true
+      }
+    }
+  },
+  "large_correction_counts": {
+    "ARABIC_DIGITS_TO_LATIN": 1670912,
+    "ARABIC_DECIMAL_SEPARATOR_NORMALIZED": 1336617,
+    "WHITESPACE_TRIMMED": 671538,
+    "PHONE_NORMALIZED_YE": 670062,
+    "DATE_NORMALIZED": 668151,
+    "EMAIL_REPEATED_SYMBOLS": 667720,
+    "ORDER_TOTAL_RECALCULATED": 500976,
+    "CURRENCY_NORMALIZED_YER": 334967,
+    "CURRENCY_SUFFIX_REMOVED": 333888,
+    "KNOWN_PRICE_WORD_TO_NUMBER": 333569,
+    "THOUSANDS_SEPARATOR_NORMALIZED": 333494,
+    "NEGATIVE_QTY_DERIVED": 210021,
+    "ITEM_TOTAL_RESIDUAL_DERIVED": 210018,
+    "ITEM_PRICE_RESIDUAL_DERIVED": 210018,
+    "STATUS_SYNONYM_NORMALIZED": 111094
+  },
+  "large_error_counts": {
+    "CORRUPTED_ITEMS_JSON": 419906,
+    "MISSING_CUSTOMER_ID": 419474,
+    "EMAIL_INVALID_UNRECOVERABLE": 418709,
+    "DUPLICATE_ORDER_ID": 417584,
+    "MULTIPLE_CONFLICTING_ERRORS": 221255,
+    "INVALID_IMPOSSIBLE_DATE": 210524,
+    "STATUS_UNKNOWN": 210194,
+    "CURRENCY_UNKNOWN": 210190,
+    "PHONE_INVALID_UNRECOVERABLE": 210042,
+    "EMPTY_ITEMS": 209934,
+    "TOTAL_UNKNOWN_UNRECOVERABLE": 209432,
+    "MISSING_ORDER_ID": 209392
+  },
+  "large_correction_source": "VIVA official snapshot",
+  "raw_historical_total": 30100000,
+  "tests_passed": 53
+}
