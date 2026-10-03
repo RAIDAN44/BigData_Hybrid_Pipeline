@@ -1,0 +1,82 @@
+{
+  "phase": "phase2_index_impact_comparison",
+  "database": "bigdata_midterm",
+  "collection": "orders_validated",
+  "same_test_parameters": {
+    "customer_id": "عميل-2135511",
+    "city": "الحديدة",
+    "start_date": "2025-04-12T00:00:00",
+    "end_date": "2025-04-12T23:59:59"
+  },
+  "comparison": {
+    "orders_by_customer": {
+      "before": {
+        "stage": "COLLSCAN",
+        "execution_time_ms": 44858,
+        "total_docs_examined": 27496192,
+        "total_keys_examined": 0,
+        "n_returned": 1
+      },
+      "after": {
+        "stage": "IXSCAN",
+        "indexes_used": [
+          "ix_phase2_customer_id"
+        ],
+        "execution_time_ms": 35,
+        "total_docs_examined": 1,
+        "total_keys_examined": 1,
+        "n_returned": 1
+      },
+      "impact": {
+        "execution_time_improvement_percent": 99.92,
+        "docs_examined_reduction_percent": 100.0
+      }
+    },
+    "orders_by_date_range": {
+      "before": {
+        "stage": "COLLSCAN",
+        "execution_time_ms": 193,
+        "total_docs_examined": 123014,
+        "total_keys_examined": 0,
+        "n_returned": 1000
+      },
+      "after": {
+        "stage": "IXSCAN",
+        "indexes_used": [
+          "ix_phase2_order_date"
+        ],
+        "execution_time_ms": 413,
+        "total_docs_examined": 1000,
+        "total_keys_examined": 1000,
+        "n_returned": 1000
+      },
+      "impact": {
+        "execution_time_improvement_percent": -113.99,
+        "docs_examined_reduction_percent": 99.19
+      }
+    },
+    "orders_by_city_and_date": {
+      "before": {
+        "stage": "COLLSCAN",
+        "execution_time_ms": 1869,
+        "total_docs_examined": 1244108,
+        "total_keys_examined": 0,
+        "n_returned": 1000
+      },
+      "after": {
+        "stage": "IXSCAN",
+        "indexes_used": [
+          "ix_phase2_city_order_date"
+        ],
+        "execution_time_ms": 268,
+        "total_docs_examined": 1000,
+        "total_keys_examined": 1000,
+        "n_returned": 1000
+      },
+      "impact": {
+        "execution_time_improvement_percent": 85.66,
+        "docs_examined_reduction_percent": 99.92
+      }
+    }
+  }
+}

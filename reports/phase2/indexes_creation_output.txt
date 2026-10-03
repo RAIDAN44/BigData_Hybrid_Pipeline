@@ -1,0 +1,23 @@
+{
+  "created_or_verified": [
+    {
+      "name": "ix_phase2_customer_id",
+      "serves_query": "orders_by_customer",
+      "reason": "Avoid scanning the full validated collection when searching by customer_id.",
+      "compound": false
+    },
+    {
+      "name": "ix_phase2_order_date",
+      "serves_query": "orders_by_date_range",
+      "reason": "Support efficient range filtering on normalized order_date values.",
+      "compound": false
+    },
+    {
+      "name": "ix_phase2_city_order_date",
+      "serves_query": "orders_by_city_and_date",
+      "reason": "Use equality on city followed by a range condition on order_date.",
+      "compound": true
+    }
+  ],
+  "phase2_index_count": 3
+}

@@ -1,0 +1,65 @@
+{
+  "proof": "phase2_incremental_materialized_views",
+  "production_collection": "orders_validated",
+  "production_modified": false,
+  "temporary_source": "_phase2_mv_proof_source",
+  "sample_documents": 500,
+  "tested_order_id": "طلب-1184598",
+  "stable_partition": "2026-08-17T00:38",
+  "before": {
+    "city": "إب",
+    "month": "2025-01",
+    "total_amount": 351000
+  },
+  "after": {
+    "city": "__PHASE2_INCREMENTAL_PROOF_CITY__",
+    "month": "2099-12",
+    "total_amount": 363345
+  },
+  "bootstrap_result": {
+    "refresh_type": "bootstrap",
+    "watermark": "2026-08-17 08:25:32.775000",
+    "partition_strategy": "first_processed_at_minute",
+    "monthly_collection": "_phase2_mv_proof_monthly_summary",
+    "monthly_rows": 1,
+    "city_collection": "_phase2_mv_proof_city_summary",
+    "city_rows": 1,
+    "monthly_partial_rows": 262,
+    "city_partial_rows": 262,
+    "validated_orders_materialized": 500,
+    "consistency": true
+  },
+  "incremental_refresh_result": {
+    "refresh_type": "incremental",
+    "result": "refreshed",
+    "previous_watermark": "2026-08-17 08:25:32.775000",
+    "new_watermark": "2026-10-03 21:47:41.297000",
+    "changed_documents": 1,
+    "affected_partition_count": 1,
+    "affected_partitions": [
+      "2026-08-17T00:38"
+    ],
+    "monthly_rows": 2,
+    "city_rows": 2,
+    "validated_orders_materialized": 500,
+    "consistency": true
+  },
+  "validations": {
+    "bootstrap_materialized_500": true,
+    "changed_documents_is_one": true,
+    "one_partition_recomputed": true,
+    "expected_partition_detected": true,
+    "first_processed_at_preserved": true,
+    "old_month_decremented": true,
+    "new_month_incremented": true,
+    "old_city_decremented": true,
+    "new_city_incremented": true,
+    "monthly_total_count_preserved": true,
+    "city_total_count_preserved": true,
+    "monthly_sales_delta_correct": true,
+    "city_sales_delta_correct": true,
+    "mv_consistency_true": true
+  },
+  "all_passed": true,
+  "cleanup": "temporary collections dropped in finally"
+}

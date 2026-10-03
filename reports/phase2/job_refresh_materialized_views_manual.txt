@@ -1,0 +1,26 @@
+{
+  "job_name": "refresh_materialized_views",
+  "description": "Run the incremental refresh mechanism for Phase 2 Materialized Views.",
+  "trigger_source": "manual",
+  "schedule": {
+    "type": "cron",
+    "expression": "0 * * * *",
+    "human": "Every hour at minute 00 UTC",
+    "timezone": "UTC"
+  },
+  "started_at": "2026-10-03 21:56:39.075989+00:00",
+  "finished_at": "2026-10-03 21:56:39.118186+00:00",
+  "duration_seconds": 0.042256,
+  "status": "success",
+  "result": {
+    "refresh_type": "incremental",
+    "result": "no_changes",
+    "changed_documents": 0,
+    "affected_partitions": [],
+    "watermark": "2026-08-17 08:26:08.644000"
+  },
+  "error": null,
+  "_id": "6ac17a175ed79db65a6844d9",
+  "log_id": "6ac17a175ed79db65a6844d9",
+  "success": true
+}

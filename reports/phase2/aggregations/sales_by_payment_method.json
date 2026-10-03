@@ -1,0 +1,25 @@
+{
+  "aggregation_name": "sales_by_payment_method",
+  "description": "Order count, total sales, and average order value grouped by payment method.",
+  "result_count": 3,
+  "results": [
+    {
+      "order_count": 9163820,
+      "total_sales": 2388496728500,
+      "payment_method": "نقدًا عند التسليم",
+      "average_order_value": 260644.22
+    },
+    {
+      "order_count": 9168532,
+      "total_sales": 2386963997500,
+      "payment_method": "محفظة إلكترونية",
+      "average_order_value": 260343.1
+    },
+    {
+      "order_count": 9163840,
+      "total_sales": 2385495200000,
+      "payment_method": "بطاقة",
+      "average_order_value": 260316.11
+    }
+  ]
+}

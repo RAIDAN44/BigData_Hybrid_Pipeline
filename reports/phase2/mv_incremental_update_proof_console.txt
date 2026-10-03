@@ -1,0 +1,34 @@
+
+================================================================================
+PHASE 2 - ISOLATED INCREMENTAL MV PROOF
+================================================================================
+Production collection : orders_validated
+Production mode       : READ ONLY
+Temporary sample      : 500 documents
+
+Changed documents     : 1
+Affected partitions   : ['2026-08-17T00:38']
+Stable partition      : 2026-08-17T00:38
+Old city              : ┼╚
+New city              : __PHASE2_INCREMENTAL_PROOF_CITY__
+Old month             : 2025-01
+New month             : 2099-12
+
+VALIDATIONS:
+  PASS - bootstrap_materialized_500
+  PASS - changed_documents_is_one
+  PASS - one_partition_recomputed
+  PASS - expected_partition_detected
+  PASS - first_processed_at_preserved
+  PASS - old_month_decremented
+  PASS - new_month_incremented
+  PASS - old_city_decremented
+  PASS - new_city_incremented
+  PASS - monthly_total_count_preserved
+  PASS - city_total_count_preserved
+  PASS - monthly_sales_delta_correct
+  PASS - city_sales_delta_correct
+  PASS - mv_consistency_true
+
+OVERALL: PASS
+Evidence: reports\phase2\mv_incremental_update_proof.json

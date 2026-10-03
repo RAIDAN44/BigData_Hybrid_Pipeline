@@ -1,0 +1,119 @@
+{
+  "report_name": "daily_analytics_report",
+  "generated_at": "2026-10-03 22:03:27.185257+00:00",
+  "source": "Phase 2 Materialized Views",
+  "mv_watermark": "2026-08-17 08:26:08.644000",
+  "validated_orders_represented": 27496192,
+  "monthly_summary_count": 5,
+  "city_summary_count": 10,
+  "monthly_sales_summary": [
+    {
+      "order_count": 7016997,
+      "total_sales": 1826819686000,
+      "month": "2025-01",
+      "average_order_value": 260342.09,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 6420528,
+      "total_sales": 1673251841000,
+      "month": "2025-02",
+      "average_order_value": 260609.69,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 7100229,
+      "total_sales": 1848745448500,
+      "month": "2025-03",
+      "average_order_value": 260378.28,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 6872186,
+      "total_sales": 1789721597000,
+      "month": "2025-04",
+      "average_order_value": 260429.74,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 86252,
+      "total_sales": 22417353500,
+      "month": "2025-05",
+      "average_order_value": 259905.32,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    }
+  ],
+  "city_sales_summary": [
+    {
+      "order_count": 2750524,
+      "total_sales": 717136245000,
+      "city": "تعز",
+      "average_order_value": 260727.14,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2752190,
+      "total_sales": 716803285000,
+      "city": "صنعاء",
+      "average_order_value": 260448.33,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2751952,
+      "total_sales": 716443945000,
+      "city": "لحج",
+      "average_order_value": 260340.28,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2746814,
+      "total_sales": 716233466500,
+      "city": "حجة",
+      "average_order_value": 260750.62,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2748817,
+      "total_sales": 715994772500,
+      "city": "إب",
+      "average_order_value": 260473.79,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2749284,
+      "total_sales": 715948670500,
+      "city": "المكلا",
+      "average_order_value": 260412.77,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2751207,
+      "total_sales": 715923429000,
+      "city": "عدن",
+      "average_order_value": 260221.58,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2748959,
+      "total_sales": 715632913000,
+      "city": "الحديدة",
+      "average_order_value": 260328.7,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2749784,
+      "total_sales": 715600941500,
+      "city": "عمران",
+      "average_order_value": 260238.96,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    },
+    {
+      "order_count": 2746661,
+      "total_sales": 715238258000,
+      "city": "ذمار",
+      "average_order_value": 260402.82,
+      "refreshed_at": "2026-10-03 21:37:48.222000"
+    }
+  ],
+  "consistency": true
+}

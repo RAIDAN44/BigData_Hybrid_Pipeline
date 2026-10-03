@@ -1,0 +1,37 @@
+{
+  "aggregation_name": "orders_by_status",
+  "description": "Order count and total order value grouped by order status.",
+  "result_count": 6,
+  "results": [
+    {
+      "order_count": 4584184,
+      "total_order_value": 1192764160500,
+      "status": "قيد الشحن"
+    },
+    {
+      "order_count": 4583526,
+      "total_order_value": 1193874030000,
+      "status": "قيد الانتظار"
+    },
+    {
+      "order_count": 4583327,
+      "total_order_value": 1194350545000,
+      "status": "ملغي"
+    },
+    {
+      "order_count": 4582500,
+      "total_order_value": 1193909359000,
+      "status": "مرتجع"
+    },
+    {
+      "order_count": 4582065,
+      "total_order_value": 1193248824000,
+      "status": "مؤكد"
+    },
+    {
+      "order_count": 4580590,
+      "total_order_value": 1192809007500,
+      "status": "تم التسليم"
+    }
+  ]
+}

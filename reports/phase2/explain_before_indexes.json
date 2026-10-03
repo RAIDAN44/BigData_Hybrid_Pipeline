@@ -1,0 +1,151 @@
+{
+  "phase": "phase2_queries_indexes_explain",
+  "state": "before_indexes",
+  "captured_at": "2026-10-03T20:13:30.998172+00:00",
+  "database": "bigdata_midterm",
+  "collection": "orders_validated",
+  "existing_midterm_indexes": [
+    "_id_",
+    "ix_validated_quality_status",
+    "uq_orders_validated_order_id"
+  ],
+  "planned_new_phase2_indexes": [
+    {
+      "name": "ix_phase2_delivery_type",
+      "keys": [
+        [
+          "delivery_type",
+          1
+        ]
+      ]
+    },
+    {
+      "name": "ix_phase2_payment_method",
+      "keys": [
+        [
+          "payment_method",
+          1
+        ]
+      ]
+    },
+    {
+      "name": "ix_phase2_city_order_date",
+      "keys": [
+        [
+          "city",
+          1
+        ],
+        [
+          "order_date",
+          1
+        ]
+      ],
+      "compound": true
+    }
+  ],
+  "test_parameters": {
+    "delivery_type": "عادي",
+    "payment_method": "نقدًا عند التسليم",
+    "city": "الحديدة",
+    "start_date": "2025-04-12T00:00:00",
+    "end_date": "2025-04-12T23:59:59"
+  },
+  "results": {
+    "orders_by_delivery_type": {
+      "query": {
+        "delivery_type": "عادي"
+      },
+      "limit": 1000,
+      "winning_stage": "COLLSCAN",
+      "n_returned": 1000,
+      "execution_time_ms": 35,
+      "total_docs_examined": 2013,
+      "total_keys_examined": 0,
+      "winning_plan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 1000,
+        "inputStage": {
+          "stage": "COLLSCAN",
+          "filter": {
+            "delivery_type": {
+              "$eq": "عادي"
+            }
+          },
+          "nss": "bigdata_midterm.orders_validated",
+          "direction": "forward"
+        }
+      }
+    },
+    "orders_by_payment_method": {
+      "query": {
+        "payment_method": "نقدًا عند التسليم"
+      },
+      "limit": 1000,
+      "winning_stage": "COLLSCAN",
+      "n_returned": 1000,
+      "execution_time_ms": 6,
+      "total_docs_examined": 3016,
+      "total_keys_examined": 0,
+      "winning_plan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 1000,
+        "inputStage": {
+          "stage": "COLLSCAN",
+          "filter": {
+            "payment_method": {
+              "$eq": "نقدًا عند التسليم"
+            }
+          },
+          "nss": "bigdata_midterm.orders_validated",
+          "direction": "forward"
+        }
+      }
+    },
+    "orders_by_city_and_date": {
+      "query": {
+        "city": "الحديدة",
+        "order_date": {
+          "$gte": "2025-04-12T00:00:00",
+          "$lte": "2025-04-12T23:59:59"
+        }
+      },
+      "limit": 1000,
+      "winning_stage": "COLLSCAN",
+      "n_returned": 1000,
+      "execution_time_ms": 2584,
+      "total_docs_examined": 1244108,
+      "total_keys_examined": 0,
+      "winning_plan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 1000,
+        "inputStage": {
+          "stage": "COLLSCAN",
+          "filter": {
+            "$and": [
+              {
+                "city": {
+                  "$eq": "الحديدة"
+                }
+              },
+              {
+                "order_date": {
+                  "$lte": "2025-04-12T23:59:59"
+                }
+              },
+              {
+                "order_date": {
+                  "$gte": "2025-04-12T00:00:00"
+                }
+              }
+            ]
+          },
+          "nss": "bigdata_midterm.orders_validated",
+          "direction": "forward"
+        }
+      }
+    }
+  }
+}

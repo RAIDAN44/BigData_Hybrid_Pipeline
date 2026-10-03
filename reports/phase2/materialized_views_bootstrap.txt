@@ -1,0 +1,13 @@
+{
+  "refresh_type": "bootstrap",
+  "watermark": "2026-08-17 08:26:08.644000",
+  "partition_strategy": "first_processed_at_minute",
+  "monthly_collection": "monthly_sales_summary",
+  "monthly_rows": 5,
+  "city_collection": "city_sales_summary",
+  "city_rows": 10,
+  "monthly_partial_rows": 1820,
+  "city_partial_rows": 3640,
+  "validated_orders_materialized": 27496192,
+  "consistency": true
+}

@@ -1,0 +1,7 @@
+{
+  "refresh_type": "incremental",
+  "result": "no_changes",
+  "changed_documents": 0,
+  "affected_partitions": [],
+  "watermark": "2026-08-17 08:26:08.644000"
+}

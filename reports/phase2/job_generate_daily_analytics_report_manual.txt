@@ -1,0 +1,27 @@
+{
+  "job_name": "generate_daily_analytics_report",
+  "description": "Generate a daily analytics snapshot from the persisted Materialized Views.",
+  "trigger_source": "manual",
+  "schedule": {
+    "type": "cron",
+    "expression": "0 2 * * *",
+    "human": "Daily at 02:00 UTC",
+    "timezone": "UTC"
+  },
+  "started_at": "2026-10-03 22:03:27.133977+00:00",
+  "finished_at": "2026-10-03 22:03:27.187769+00:00",
+  "duration_seconds": 0.054282,
+  "status": "success",
+  "result": {
+    "report_name": "daily_analytics_report",
+    "output_path": "reports\\phase2\\jobs\\daily_analytics_20261003T220327Z.json",
+    "validated_orders_represented": 27496192,
+    "monthly_summary_count": 5,
+    "city_summary_count": 10,
+    "consistency": true
+  },
+  "error": null,
+  "_id": "6ac17bafa60b411313b81634",
+  "log_id": "6ac17bafa60b411313b81634",
+  "success": true
+}

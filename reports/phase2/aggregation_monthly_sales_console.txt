@@ -1,0 +1,39 @@
+{
+  "aggregation_name": "monthly_sales",
+  "description": "Monthly order count, total sales, and average order value.",
+  "result_count": 5,
+  "results": [
+    {
+      "order_count": 7016997,
+      "total_sales": 1826819686000,
+      "month": "2025-01",
+      "average_order_value": 260342.09
+    },
+    {
+      "order_count": 6420528,
+      "total_sales": 1673251841000,
+      "month": "2025-02",
+      "average_order_value": 260609.69
+    },
+    {
+      "order_count": 7100229,
+      "total_sales": 1848745448500,
+      "month": "2025-03",
+      "average_order_value": 260378.28
+    },
+    {
+      "order_count": 6872186,
+      "total_sales": 1789721597000,
+      "month": "2025-04",
+      "average_order_value": 260429.74
+    },
+    {
+      "order_count": 86252,
+      "total_sales": 22417353500,
+      "month": "2025-05",
+      "average_order_value": 259905.32
+    }
+  ]
+}
+
+Saved report: reports\phase2\aggregations\monthly_sales.json

@@ -1,0 +1,23 @@
+{
+  "aggregation_name": "delivery_type_summary",
+  "description": "Order count, total sales, and delivery cost statistics grouped by delivery type.",
+  "result_count": 2,
+  "results": [
+    {
+      "order_count": 13751792,
+      "total_sales": 3601387650000,
+      "total_delivery_cost": 68510368000,
+      "delivery_type": "╙╤و┌",
+      "average_delivery_cost": 4981.92
+    },
+    {
+      "order_count": 13744400,
+      "total_sales": 3559568276000,
+      "total_delivery_cost": 27736060000,
+      "delivery_type": "┌╟╧و",
+      "average_delivery_cost": 2017.99
+    }
+  ]
+}
+
+Saved report: reports\phase2\aggregations\delivery_type_summary.json

@@ -1,0 +1,26 @@
+{
+  "proof": "isolated_api_ingest_runtime_test",
+  "generated_at": "2026-10-03 22:29:04.408375+00:00",
+  "api_endpoint": "POST /ingest",
+  "gateway": "src.main",
+  "test_database": "bigdata_phase2_api_test",
+  "test_counts": {
+    "orders_raw": 10000,
+    "orders_validated": 9317,
+    "orders_quarantine": 683
+  },
+  "test_consistency": true,
+  "production_database": "bigdata_midterm",
+  "production_counts": {
+    "orders_raw": 30100000,
+    "orders_validated": 27496192,
+    "orders_quarantine": 2503808
+  },
+  "production_expected": {
+    "orders_raw": 30100000,
+    "orders_validated": 27496192,
+    "orders_quarantine": 2503808
+  },
+  "production_unchanged": true,
+  "overall_pass": true
+}

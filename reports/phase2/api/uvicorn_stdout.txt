@@ -1,0 +1,11 @@
+INFO:     127.0.0.1:51674 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49672 - "GET /queries HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49984 - "GET /queries/orders_by_customer?customer_id=%D8%B9%D9%85%D9%8A%D9%84-2135511&limit=2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49992 - "GET /aggregations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49993 - "GET /aggregations/orders_by_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49993 - "POST /indexes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49993 - "POST /refresh-mv HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49993 - "GET /jobs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49993 - "POST /jobs/refresh_materialized_views/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50284 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53771 - "GET /docs HTTP/1.1" 200 OK

@@ -1,6 +1,6 @@
 # Hybrid Big Data Data-Quality Pipeline
 
-University Big Data Midterm Project
+University Big Data Project - Midterm + Final Phase 2
 
 ## Project Objective
 
@@ -170,3 +170,256 @@ bounded-memory processing, and the Spark design is documented in:
 `docs/DESIGN_DECISIONS.md`
 
 This document is also intended as a technical reference for the project viva.
+
+
+---
+
+---
+
+## Final Phase 2
+
+Phase 2 extends the existing Midterm project inside the same repository.
+The original ingestion and ELT architecture remains the authoritative data pipeline.
+Final features are added on top of `orders_validated`.
+
+### Phase 2 Features
+
+- 5 practical MongoDB queries.
+- 3 query indexes, including one Compound Index.
+- `explain("executionStats")` evidence before and after indexes.
+- 5 aggregation reports.
+- 2 Materialized Views with incremental refresh.
+- 2 scheduled jobs using APScheduler.
+- Unified FastAPI interface with Swagger `/docs`.
+
+## Installation
+
+Install the Python dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+MongoDB must be available before running database operations.
+
+Default local connection:
+
+```text
+mongodb://127.0.0.1:27017
+```
+
+Configuration can be overridden with environment variables documented in `.env.example`.
+
+## Unified FastAPI
+
+Start the API from the project root:
+
+```bash
+python -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+```
+
+Swagger UI:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Required endpoints:
+
+```text
+GET  /health
+POST /ingest
+POST /indexes
+GET  /queries
+GET  /queries/{name}
+GET  /aggregations
+GET  /aggregations/{name}
+POST /refresh-mv
+GET  /jobs
+POST /jobs/{name}/run
+```
+
+`POST /ingest` does not implement a new loader. It invokes the existing Midterm gateway:
+
+```bash
+python -m src.main --input "<CSV_PATH>"
+```
+
+Example request body:
+
+```json
+{
+  "input_path": "data/samples/orders_small_sample.csv"
+}
+```
+
+An optional `batch_size` may also be supplied for the Python Batch path.
+
+## Queries
+
+List all Phase 2 queries:
+
+```bash
+python -m src.phase2.queries --list
+```
+
+Implemented queries:
+
+- `orders_by_customer`
+- `orders_by_date_range`
+- `orders_by_city_and_date`
+- `high_value_orders`
+- `orders_by_payment_method`
+
+Each query accepts dynamic parameters and does not depend on a fixed dataset size or fixed result values.
+
+## Query Indexes
+
+Create or verify the required Phase 2 query indexes:
+
+```bash
+python -m src.phase2.indexes --create
+```
+
+Required query indexes:
+
+- `ix_phase2_customer_id` ? `customer_id ASC`
+- `ix_phase2_order_date` ? `order_date ASC`
+- `ix_phase2_city_order_date` ? `city ASC, order_date ASC` ? Compound Index
+
+Materialized View support indexes are operational indexes and are not counted as the three required query indexes.
+
+### Explain Evidence
+
+Three queries were measured with MongoDB execution statistics before and after creating the Phase 2 indexes.
+
+- `reports/phase2/explain_before_final_indexes.json`
+- `reports/phase2/explain_after_final_indexes.json`
+- `reports/phase2/explain_before_after_comparison.json`
+
+Execution time may vary with cache and I/O state, so evaluation also considers execution plan, `docsExamined`, and `keysExamined`.
+
+## Aggregation Reports
+
+List reports:
+
+```bash
+python -m src.phase2.aggregations --list
+```
+
+Run one report independently:
+
+```bash
+python -m src.phase2.aggregations --name orders_by_status
+```
+
+Implemented reports:
+
+- `sales_by_city`
+- `orders_by_status`
+- `sales_by_payment_method`
+- `delivery_type_summary`
+- `monthly_sales`
+
+Evidence is stored under `reports/phase2/aggregations/`.
+
+`total_sales` represents aggregated validated order value and should not automatically be interpreted as realized accounting revenue.
+
+## Materialized Views
+
+Public Materialized View collections:
+
+- `monthly_sales_summary`
+- `city_sales_summary`
+
+Initial bootstrap:
+
+```bash
+python -m src.phase2.materialized_views --bootstrap
+```
+
+Incremental refresh:
+
+```bash
+python -m src.phase2.materialized_views --refresh
+```
+
+Status:
+
+```bash
+python -m src.phase2.materialized_views --status
+```
+
+Incremental refresh uses `last_updated_at` as the change-detection watermark and `first_processed_at` to map changes to stable processing-minute partitions.
+
+Only affected partitions are recomputed from `orders_validated`; public summaries are rolled up from smaller partial collections rather than rescanning the full validated dataset on every refresh.
+
+Evidence:
+
+- `reports/phase2/materialized_views_bootstrap.txt`
+- `reports/phase2/materialized_views_refresh_no_changes.txt`
+- `reports/phase2/mv_incremental_update_proof.json`
+
+## Scheduled Jobs
+
+List jobs:
+
+```bash
+python -m src.phase2.jobs --list
+```
+
+Implemented jobs:
+
+- `refresh_materialized_views` ? every hour at minute 00 UTC.
+- `generate_daily_analytics_report` ? daily at 02:00 UTC.
+
+Manual execution:
+
+```bash
+python -m src.phase2.jobs --run refresh_materialized_views
+python -m src.phase2.jobs --run generate_daily_analytics_report
+```
+
+Start APScheduler:
+
+```bash
+python -m src.phase2.jobs --start
+```
+
+Execution logs are stored in MongoDB collection `phase2_job_logs`.
+
+Each log records `job_name`, `trigger_source`, `schedule`, `started_at`, `finished_at`, `duration_seconds`, `status`, `result`, and `error`.
+
+Generated daily analytics files are stored under `reports/phase2/jobs/`.
+
+## Phase 2 Runtime Evidence
+
+Phase 2 evidence is isolated under `reports/phase2/`.
+
+The API ingestion endpoint was verified with an isolated temporary database so production data was not modified.
+
+- `reports/phase2/api/isolated_ingest_verification.json`
+
+## Environment Configuration
+
+No real credentials are committed.
+
+Supported environment variables:
+
+- `MONGO_URI`
+- `MONGO_DATABASE`
+- `SMALL_FILE_THRESHOLD_MB`
+- `BATCH_SIZE`
+- `SPARK_MASTER`
+
+See `.env.example` for safe example values.
+
+## Final Testing
+
+Run the existing automated tests:
+
+```bash
+python -m pytest tests -q
+```
+
+Phase 2 must also work with different filenames, row counts, and business values. The implementation must not depend on fixed development data.
