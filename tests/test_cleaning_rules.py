@@ -14,7 +14,9 @@ from src.quality_rules import (
     RULE_PHONE,
     RULE_EMAIL,
     RULE_DATE,
-    RULE_NEGATIVE_QTY,
+    ERR_NEGATIVE_QUANTITY,
+    ERR_ITEM_SKU_MISSING,
+    RULE_QTY_STRING,
     RULE_ITEM_PRICE_RESIDUAL,
     RULE_ORDER_TOTAL_RECALCULATED,
 )
@@ -184,7 +186,7 @@ def test_date_normalization():
     )
 
 
-def test_negative_qty_is_derived():
+def test_negative_qty_is_quarantined():
     record = base_record()
 
     record["items_json"] = json.dumps(
@@ -206,20 +208,82 @@ def test_negative_qty_is_derived():
     result = classify_record(record)
 
     items = json.loads(
-        result["cleaned_record"]
-        ["items_json"]
+        result["cleaned_record"]["items_json"]
     )
 
-    assert items[0]["qty"] == 3
+    assert items[0]["qty"] == -2
 
     assert (
-        RULE_NEGATIVE_QTY
-        in rule_codes(result)
+        result["quality_status"]
+        == QUALITY_QUARANTINED
     )
+
+    assert (
+        ERR_NEGATIVE_QUANTITY
+        in result["codes_error"]
+    )
+
+
+def test_qty_string_is_corrected():
+    record = base_record()
+
+    record["items_json"] = json.dumps(
+        [
+            {
+                "sku": "SKU-1",
+                "name": "منتج",
+                "qty": "2",
+                "unit_price": 5000,
+                "total": 10000,
+            }
+        ],
+        ensure_ascii=False,
+    )
+
+    result = classify_record(record)
+
+    items = json.loads(
+        result["cleaned_record"]["items_json"]
+    )
+
+    assert items[0]["qty"] == 2
 
     assert (
         result["quality_status"]
         == QUALITY_CORRECTED
+    )
+
+    assert (
+        RULE_QTY_STRING
+        in rule_codes(result)
+    )
+
+
+def test_missing_item_sku_is_quarantined():
+    record = base_record()
+
+    record["items_json"] = json.dumps(
+        [
+            {
+                "name": "منتج",
+                "qty": 2,
+                "unit_price": 5000,
+                "total": 10000,
+            }
+        ],
+        ensure_ascii=False,
+    )
+
+    result = classify_record(record)
+
+    assert (
+        result["quality_status"]
+        == QUALITY_QUARANTINED
+    )
+
+    assert (
+        ERR_ITEM_SKU_MISSING
+        in result["codes_error"]
     )
 
 

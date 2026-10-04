@@ -25,7 +25,7 @@ from src.quality_rules import (
     ERR_ID_ORDER_MISSING,
     ERR_ID_CUSTOMER_MISSING,
     ERR_STATUS_UNKNOWN,
-    ERR_VALUE_NEGATIVE_AMBIGUOUS,
+    ERR_NEGATIVE_QUANTITY,
     ERR_ITEM_COMPONENTS_CONFLICT,
     ERR_PRICE_UNKNOWN,
 )
@@ -373,7 +373,7 @@ def test_ambiguous_negative_qty_quarantine():
     assert result["quality_status"] == QUALITY_QUARANTINED
 
     assert (
-        ERR_VALUE_NEGATIVE_AMBIGUOUS
+        ERR_NEGATIVE_QUANTITY
         in result["codes_error"]
     )
 

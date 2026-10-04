@@ -58,6 +58,8 @@ ERR_PHONE_INVALID = "PHONE_INVALID_UNRECOVERABLE"
 ERR_CURRENCY_UNKNOWN = "CURRENCY_UNKNOWN"
 ERR_STATUS_UNKNOWN = "STATUS_UNKNOWN"
 ERR_ITEM_QUANTITY_INVALID = "ITEM_QUANTITY_INVALID"
+ERR_ITEM_SKU_MISSING = "MISSING_ITEM_SKU"
+ERR_NEGATIVE_QUANTITY = "NEGATIVE_QUANTITY"
 ERR_ITEM_COMPONENTS_CONFLICT = "ITEM_COMPONENTS_CONFLICT"
 ERR_TOTAL_UNKNOWN = "TOTAL_UNKNOWN_UNRECOVERABLE"
 
@@ -78,7 +80,7 @@ RULE_PHONE = "PHONE_NORMALIZED_YE"
 RULE_EMAIL = "EMAIL_REPEATED_SYMBOLS"
 RULE_DATE = "DATE_NORMALIZED"
 RULE_STATUS_SYNONYM = "STATUS_SYNONYM_NORMALIZED"
-RULE_NEGATIVE_QTY = "NEGATIVE_QTY_DERIVED"
+RULE_QTY_STRING = "QTY_STRING_TO_NUMBER"
 RULE_ITEM_TOTAL = "ITEM_TOTAL_DERIVED"
 RULE_ITEM_PRICE_DIRECT = "ITEM_PRICE_DIRECT_DERIVED"
 RULE_ITEM_TOTAL_RESIDUAL = "ITEM_TOTAL_RESIDUAL_DERIVED"
@@ -936,6 +938,22 @@ def item_number(
 
     item[field] = corrected
 
+    if (
+        field == "qty"
+        and isinstance(original, str)
+    ):
+        add_correction(
+            corrections,
+            f"items_json[{index}].{field}",
+            original,
+            corrected,
+            RULE_QTY_STRING,
+            details=(
+                "Numeric quantity stored as text "
+                "normalized to number."
+            ),
+        )
+
     for rule_code in numeric_rule_codes(
         original
     ):
@@ -949,52 +967,6 @@ def item_number(
         )
 
     return parsed
-
-
-def order_total_corroborates_items(
-    items,
-    delivery,
-    order_total,
-):
-    """
-    التأكد أن:
-    مجموع Items + Delivery = Order Total
-
-    يستخدم كدليل إضافي عند محاولة إصلاح Negative Quantity.
-    """
-
-    if (
-        delivery is None
-        or delivery < 0
-        or order_total is None
-        or order_total < 0
-    ):
-        return False
-
-    totals = []
-
-    for item in items:
-
-        value = parse_decimal(
-            item.get("total")
-        )
-
-        if (
-            value is None
-            or value < 0
-        ):
-            return False
-
-        totals.append(value)
-
-    return (
-        sum(
-            totals,
-            Decimal("0")
-        )
-        + delivery
-        == order_total
-    )
 
 
 def clean_items(
@@ -1030,15 +1002,6 @@ def clean_items(
         corrections
     )
 
-    # دليل مستقل يستخدم عند معالجة Negative Quantity.
-    order_corroborated = (
-        order_total_corroborates_items(
-            items,
-            delivery,
-            order_total,
-        )
-    )
-
     states = []
 
     # --------------------------------------------------------
@@ -1047,6 +1010,15 @@ def clean_items(
     # --------------------------------------------------------
 
     for index, item in enumerate(items):
+
+        if is_blank(item.get("sku")):
+            add_error(
+                errors,
+                ERR_ITEM_SKU_MISSING,
+                f"items_json[{index}].sku",
+                item.get("sku"),
+                "Item SKU is missing and cannot be inferred.",
+            )
 
         qty = item_number(
             item,
@@ -1073,64 +1045,17 @@ def clean_items(
         # NEGATIVE QUANTITY
         # لا نحول السالب إلى موجب مباشرة.
         # نحاول اشتقاق الكمية من total / price مع دليل إضافي.
-        # ----------------------------------------------------
-
         if (
             qty is not None
             and qty < 0
         ):
-
-            candidate = None
-
-            if (
-                unit_price is not None
-                and unit_price > 0
-                and item_total is not None
-                and item_total >= 0
-            ):
-
-                candidate = (
-                    item_total
-                    / unit_price
-                )
-
-            # التصحيح يتم فقط إذا كانت النتيجة عددًا صحيحًا موجبًا
-            # وإجمالي الطلب يؤكد صحة مكونات Items.
-            if (
-                positive_integer(candidate)
-                and order_corroborated
-            ):
-
-                original_qty = item["qty"]
-
-                qty = candidate
-
-                item["qty"] = to_number(
-                    candidate
-                )
-
-                add_correction(
-                    corrections,
-                    f"items_json[{index}].qty",
-                    original_qty,
-                    item["qty"],
-                    RULE_NEGATIVE_QTY,
-                    details=(
-                        "Derived as item_total / unit_price "
-                        "and corroborated by order total."
-                    ),
-                )
-
-            else:
-
-                # لا يوجد دليل كافٍ → لا نخمن.
-                add_error(
-                    errors,
-                    ERR_VALUE_NEGATIVE_AMBIGUOUS,
-                    f"items_json[{index}].qty",
-                    item.get("qty"),
-                    "Negative quantity cannot be resolved safely.",
-                )
+            add_error(
+                errors,
+                ERR_NEGATIVE_QUANTITY,
+                f"items_json[{index}].qty",
+                item.get("qty"),
+                "Negative quantity is not accepted.",
+            )
 
         # Quantity مفقودة أو صفر → خطأ.
         if (

@@ -71,7 +71,7 @@ Corrections are deterministic only. Unsafe or ambiguous records are quarantined 
 
 ## Cleaning Rules
 
-Implemented rules include Arabic-digit normalization, decimal/thousand separator normalization, known price words, currency normalization, Yemen phone normalization, repeated email-symbol repair, date normalization, status synonym normalization, negative quantity derivation, item price/total derivation, and order-total recalculation.
+Implemented rules include Arabic-digit normalization, decimal/thousand separator normalization, known price words, currency normalization, Yemen phone normalization, repeated email-symbol repair, date normalization, status synonym normalization, numeric-string quantity correction, missing-item-SKU quarantine, negative-quantity quarantine, item price/total derivation, and order-total recalculation.
 
 Corrected records preserve an audit trail with field, original, corrected, and rule_code.
 
